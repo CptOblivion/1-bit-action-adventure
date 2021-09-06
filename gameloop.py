@@ -83,30 +83,6 @@ class GameLoop:
             for actor2 in testActors:
                 actor.gameloopCollision(actor2)
         None
-    def draw(game):
-        game.window.screen.fill((255,255,255))
-        tile = pygame.Surface((lv.Level.current.tileSize, lv.Level.current.tileSize))
-        tile.fill((0,0,0))
-        entityPositions=[]
-        for i in range(lv.Level.current.height):
-            entityPositions.append([])
-        for entity in lv.Level.current.entities:
-            if (entity.active):
-                gridCell = int(entity.position.y / lv.Level.current.tileSize)
-                if (0 <= gridCell < len(entityPositions)):
-                    entityPositions[gridCell].append(entity)
-        for y in range(lv.Level.current.height):
-            for x in range(lv.Level.current.width):
-                if (lv.Level.current.floors[x][y]):
-                    lv.Level.current.floors[x][y].draw((x,y))
-        for y in range(lv.Level.current.height):
-            for x in range(lv.Level.current.width):
-                if (lv.Level.current.walls[x][y]):
-                    lv.Level.current.walls[x][y].draw()
-            for entity in entityPositions[y]:
-                entity.draw()
-        pygame.display.flip()
-
     def main(game):
         while game.running:
             GameLoop.updateDeltaTime()
@@ -139,7 +115,7 @@ class GameLoop:
                         GameLoop.inputEvents['moveRight'].invoke(False)
             game.update()
             game.physics()
-            game.draw()
+            lv.Level.current.draw()
 
 class Window:
     current = None
