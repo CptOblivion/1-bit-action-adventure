@@ -50,4 +50,3 @@ class LevelDoor(e.Actor):
 			tempBox.fill((0,0,255))
 			g.Window.current.screen.blit(tempBox,self.position+self.collisionBounds.topleft)
 
-

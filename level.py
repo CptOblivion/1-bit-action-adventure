@@ -2,16 +2,25 @@ import os
 import pygame
 from pygame.math import Vector2
 import configparser
-import gameloop
+import gameloop as g
+import event as e
 import entities
 import leveldoor
 #from Cest_Une_Sword_Prototype import Window
 
+class LevelChangeEvent(e.Event):
+    #technically could just use InputEvent, but it's nice having a separate name to avoid confusion
+    def invoke(self, level):
+        for subscriber in self.subscribers:
+            subscriber(level)
+
 class Level:
     current=None
     init=False
+    onLevelChange = LevelChangeEvent()
     def __init__(self, levelFile):
-        #Level.current=self
+        self.onLevelChange = LevelChangeEvent()
+        self.onLevelLeave = LevelChangeEvent()
         self.config = configparser.ConfigParser()
         self.config.read(os.path.join(os.getcwd(), 'Assets', 'Levels',levelFile+'.lvl'))
         self.mapImage=pygame.image.load(os.path.join(os.getcwd(), 'Assets', 'Levels', self.config['Main']['Image']))
@@ -70,6 +79,11 @@ class Level:
             position[1] < 0 or position[1] >= self.height):
             return oobReturn #out of bounds return
         return self.walls[position[0]][position[1]]
+    def changedLevel(self):
+        Level.onLevelChange.invoke(self)
+        self.onLevelChange.invoke(self)
+    def leavingLevel(self, newLevel):
+        self.onLevelLeave.invoke(newLevel)
 class WallEntry:
     def __init__(self, position, level):
         self.level=level
@@ -121,7 +135,7 @@ class Tile:
         self.surf.blit(tileset, (-rect.x,-rect.y))
         self.tileset = tileset
     def draw(self, position):
-        gameloop.Window.current.screen.blit(self.surf, (position[0]*Level.current.tileSize,
+        g.Window.current.screen.blit(self.surf, (position[0]*Level.current.tileSize,
                                                position[1]*Level.current.tileSize))
 class WallTile(Tile):
     offsets = (#HVD
@@ -159,4 +173,4 @@ class WallTile(Tile):
                                      offset[1] * self.rect.height)
                 cornerOffset = (x * self.rect.width/2 + finalPos[0],
                                 y * self.baseHeight/2 + finalPos[1])
-                gameloop.Window.current.screen.blit(self.tileset, cornerOffset, area=corner)
+                g.Window.current.screen.blit(self.tileset, cornerOffset, area=corner)
