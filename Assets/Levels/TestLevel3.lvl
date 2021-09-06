@@ -1,0 +1,13 @@
+[Main]
+Image:TestLevel3.png
+Tileset:Tileset.png
+Tilesize:16
+[Floors]
+0:NormalFloor,0,0
+[Walls]
+255:NormalWall,0,0
+[Entities]
+[Doors]:
+b1:18,14,B,TestLevel1,tr1
+b2:19,14,B,TestLevel1,tr2
+start:12,8,None,None,None
