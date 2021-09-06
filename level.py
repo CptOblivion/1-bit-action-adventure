@@ -1,26 +1,17 @@
 import os
 import pygame
 from pygame.math import Vector2
-import GameLoops
-import Entities
 import configparser
-import LevelDoor
+import gameloop
+import entities
+import leveldoor
 #from Cest_Une_Sword_Prototype import Window
 
 class Level:
     current=None
     init=False
-    #def __init__(self, mapImage, tileSize, tileset):
-        #self.mapImage = pygame.image.load(os.path.join(os.getcwd(), 'Assets', 'Levels', mapImage))
-        #self.width = self.mapImage.get_width()
-        #self.height = self.mapImage.get_height()
-        #self.tileSize = tileSize
-        #self.tileset = pygame.image.load(os.path.join(os.getcwd(), 'Assets', 'Tilesets', tileset))
-
-        #floor = Tile('NormalFloor',pygame.Rect(0,0,tileSize, tileSize), self.tileset)
-        #wall= WallTile('NormalWall',pygame.Rect(96,0,16,32),self.tileset, baseHeight=16)
     def __init__(self, levelFile):
-        Level.current=self
+        #Level.current=self
         self.config = configparser.ConfigParser()
         self.config.read(os.path.join(os.getcwd(), 'Assets', 'Levels',levelFile+'.lvl'))
         self.mapImage=pygame.image.load(os.path.join(os.getcwd(), 'Assets', 'Levels', self.config['Main']['Image']))
@@ -39,7 +30,7 @@ class Level:
             rowFloor = []
             rowWall = []
             for y in range(self.height):
-                rowWall.append(WallEntry((x,y)))
+                rowWall.append(WallEntry((x,y), self))
                 rowFloor.append(None)
             self.floors.append(rowFloor)
             self.walls.append(rowWall)
@@ -71,7 +62,7 @@ class Level:
             x,y,exitDir,linkedLevel,linkedDoor = doorString.split(',')
             position = (int(x)*self.tileSize+self.tileSize/2,int(y)*self.tileSize+self.tileSize/2)
             bounds=pygame.Rect(-self.tileSize/2,-self.tileSize/2,self.tileSize,self.tileSize)
-            levelDoor=LevelDoor.LevelDoor(levelDoorName,position,bounds,None,exitDir,linkedLevel,linkedDoor)
+            levelDoor=leveldoor.LevelDoor(levelDoorName,self,position,bounds,None,exitDir,linkedLevel,linkedDoor)
 
 
     def getWall(self, position, oobReturn=None):
@@ -80,29 +71,30 @@ class Level:
             return oobReturn #out of bounds return
         return self.walls[position[0]][position[1]]
 class WallEntry:
-    def __init__(self, position):
+    def __init__(self, position, level):
+        self.level=level
         self.wall=None
         self.position=position
         self.corners=[[0,0],[0,0]]
-        self.rect = pygame.Rect(position[0]* Level.current.tileSize, position[1]* Level.current.tileSize,
-                                Level.current.tileSize, Level.current.tileSize)
+        self.rect = pygame.Rect(position[0]* level.tileSize, position[1]* level.tileSize,
+                                level.tileSize, level.tileSize)
     def updateWall(self):
         if (self.wall):
             for x in range(-1,2,2):
                 for y in range(-1,2,2):
                     offsetIndex=0
-                    if (Level.current.getWall((self.position[0]+x, self.position[1]),self).wall == self.wall):
+                    if (self.level.getWall((self.position[0]+x, self.position[1]),self).wall == self.wall):
                         offsetIndex += 4
-                    if (Level.current.getWall((self.position[0], self.position[1]+y),self).wall == self.wall):
+                    if (self.level.getWall((self.position[0], self.position[1]+y),self).wall == self.wall):
                         offsetIndex += 2
-                    if (Level.current.getWall((self.position[0]+x, self.position[1]+y),self).wall == self.wall):
+                    if (self.level.getWall((self.position[0]+x, self.position[1]+y),self).wall == self.wall):
                         offsetIndex += 1
                     self.corners[max(0,x)][max(0,y)] = offsetIndex
     def setWall(self, wall):
         self.wall=wall
         for x in range(-1,2):
             for y in range(-1,2):
-                neighbor = Level.current.getWall((self.position[0]+x,self.position[1]+y))
+                neighbor = self.level.getWall((self.position[0]+x,self.position[1]+y))
                 if (neighbor): neighbor.updateWall()
     def draw(self):
         if (self.wall):
@@ -117,7 +109,7 @@ class WallEntry:
                             self.rect.height/2*sign[1] + collisionBox.height/2*sign[1] - normal.y)
             if (abs(force.x) > abs(force.y)): force.x=0
             else: force.y=0
-            return(Entities.Actor.Collision(self, force,'wall'))
+            return(entities.Actor.Collision(self, force,'wall'))
 
         return None
 
@@ -129,7 +121,7 @@ class Tile:
         self.surf.blit(tileset, (-rect.x,-rect.y))
         self.tileset = tileset
     def draw(self, position):
-        GameLoops.Window.current.screen.blit(self.surf, (position[0]*Level.current.tileSize,
+        gameloop.Window.current.screen.blit(self.surf, (position[0]*Level.current.tileSize,
                                                position[1]*Level.current.tileSize))
 class WallTile(Tile):
     offsets = (#HVD
@@ -157,8 +149,8 @@ class WallTile(Tile):
                                      rect.width/2, rect.height-self.baseHeight/2)))
     def draw(self, levelPosition, corners):
         tiles = Level.current.walls
-        finalPos = (levelPosition[0]*Level.current.tileSize,
-                    levelPosition[1]*Level.current.tileSize - self.rect.height + self.baseHeight)
+        finalPos = (levelPosition[0]*self.rect.width,
+                    levelPosition[1]*self.baseHeight - self.rect.height + self.baseHeight)
         for x in range(2):
             for y in range(2):
                 offset = WallTile.offsets[corners[x][y]]
@@ -167,4 +159,4 @@ class WallTile(Tile):
                                      offset[1] * self.rect.height)
                 cornerOffset = (x * self.rect.width/2 + finalPos[0],
                                 y * self.baseHeight/2 + finalPos[1])
-                GameLoops.Window.current.screen.blit(self.tileset, cornerOffset, area=corner)
+                gameloop.Window.current.screen.blit(self.tileset, cornerOffset, area=corner)

@@ -1,7 +1,7 @@
 import os
 import pygame
 from pygame.math import Vector2
-import GameLoops
+import gameloop as g
 
 class Sprite:
     class State:
@@ -60,14 +60,14 @@ class Sprite:
         self.currentSprite=self.currentState.activate().rect
     def draw(self, position):
         if (len(self.currentState.frames)>1):
-            self.animTimer+=1 #TODO: implement deltatime
+            self.animTimer+=g.deltaTime
             if (self.animTimer >= self.nextFrameTime):
                 self.animTimer = 0
                 self.currentSprite=self.currentState.advanceFrame()
                 time=self.currentState.frames[self.currentState.currentFrame].time
                 if (time):
                     self.nextFrameTime=time
-        GameLoops.Window.current.screen.blit(self.sheet, position, area=self.currentSprite)
+        g.Window.current.screen.blit(self.sheet, position, area=self.currentSprite)
     def changeState(self, state):
         if (state in self.states and self.states[state] != self.currentState):
             self.animTimer=0

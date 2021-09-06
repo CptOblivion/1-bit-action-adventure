@@ -1,11 +1,11 @@
-import Entities as e
+import entities as e
 import pygame
-import Levels
-import GameLoops
+import level as lv
+import gameloop as g
 
 class LevelDoor(e.Actor):
-	def __init__(self, name, position, collisionBounds, sprite, exitDirection,linkedLevel,linkedDoor):
-		super().__init__(name, position,collisionBounds,sprite,ghost=True)
+	def __init__(self, name, level, position, collisionBounds, sprite, exitDirection,linkedLevel,linkedDoor):
+		super().__init__(name, level, position,collisionBounds,sprite,ghost=True)
 		#TODO: maybe this should be a floor or a wall tile, actually
 		#	collision is implemented for entities tho
 		self.exitDirection=exitDirection
@@ -16,7 +16,7 @@ class LevelDoor(e.Actor):
 			self.linkedDoor = None
 			self.setActive(False)
 		self.colliding=False
-		Levels.Level.current.doors[self.name]=self
+		level.doors[self.name]=self
 		#print(self.name)
 	def onCollide(self, collision):
 		super().onCollide(collision)
@@ -39,7 +39,7 @@ class LevelDoor(e.Actor):
 				if (self.exitDirection =='R' and e.Player.current.position.x > self.position.x):
 					self.triggerLoad()
 	def triggerLoad(self):
-		GameLoops.GameLoop.current.loadLevel(self.linkedLevel, self.linkedDoor)
+		g.GameLoop.changeLevel(self.linkedLevel, self.linkedDoor)
 		#print(self.linkedLevel,self.linkedDoor)
 		#self.setActive(False)
 	def draw(self):
@@ -48,6 +48,6 @@ class LevelDoor(e.Actor):
 		if (self.active):
 			tempBox=pygame.Surface((self.collisionBounds.width, self.collisionBounds.height))
 			tempBox.fill((0,0,255))
-			GameLoops.Window.current.screen.blit(tempBox,self.position+self.collisionBounds.topleft)
+			g.Window.current.screen.blit(tempBox,self.position+self.collisionBounds.topleft)
 
 

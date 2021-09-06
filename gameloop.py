@@ -2,12 +2,16 @@ import os
 from pygame import locals
 import pygame
 from pygame.math import Vector2
-from Levels import *
-from Entities import *
-from Sprites import *
-from LevelDoor import *
+import datetime
+from level import *
+from entities import *
+from sprite import *
+from leveldoor import *
+deltaTime=100
 
 class GameLoop:
+    lastTime=None
+    levels={}
     def __init__(game):
         GameLoop.current=game
         pygame.init()
@@ -22,20 +26,29 @@ class GameLoop:
             'moveRight':InputEvent(),
             'dodge':InputEvent()}
 
-        #debug startup stuff
-        #game.currentLevel = Level('TestLevel1.png', 16, 'Tilemap.png')
         player=Player()
-        game.loadLevel('TestLevel3', 'start')
+        GameLoop.changeLevel('TestLevel3', 'start')
+        GameLoop.lastTime = datetime.datetime.now()
         
-    def loadLevel(game, levelName, doorName):
-        print('Loading level ', levelName, ' at door ', doorName)
+    def updateDeltaTime():
+        global deltaTime
+        time=datetime.datetime.now()
+        deltaTime=(time-GameLoop.lastTime).microseconds / 1000000
+        GameLoop.lastTime=time
+
+    def loadLevel(levelName):
+        print('loading level ',levelName)
         #TODO: check if we can reuse data from already loaded instance of this level
         #TODO: learn about how to trigger garbage collection (and ensure the previous level is properly flushed)
-        game.currentLevel = Level(levelName)
-        Player.current.setLevel(game.currentLevel)
-        #print(game.currentLevel.doors)
-        Player.current.position=game.currentLevel.doors[doorName].position
-
+        GameLoop.levels[levelName] = Level(levelName)
+    def changeLevel(levelName, doorName):
+        print('moving to level ', levelName, ' at door ', doorName)
+        if (not levelName in GameLoop.levels):
+            GameLoop.loadLevel(levelName)
+        Level.current=GameLoop.levels[levelName]
+        print()
+        Player.current.setLevel(Level.current)
+        Player.current.position=Level.current.doors[doorName].position
 
     def quit(game):
         print('quitting')
@@ -72,30 +85,31 @@ class GameLoop:
         None
     def draw(game):
         game.window.screen.fill((255,255,255))
-        tile = pygame.Surface((game.currentLevel.tileSize, game.currentLevel.tileSize))
+        tile = pygame.Surface((Level.current.tileSize, Level.current.tileSize))
         tile.fill((0,0,0))
         entityPositions=[]
-        for i in range(game.currentLevel.height):
+        for i in range(Level.current.height):
             entityPositions.append([])
         for entity in Level.current.entities:
             if (entity.active):
                 gridCell = int(entity.position.y / Level.current.tileSize)
                 if (0 <= gridCell < len(entityPositions)):
                     entityPositions[gridCell].append(entity)
-        for y in range(game.currentLevel.height):
-            for x in range(game.currentLevel.width):
-                if (game.currentLevel.floors[x][y]):
-                    game.currentLevel.floors[x][y].draw((x,y))
-        for y in range(game.currentLevel.height):
-            for x in range(game.currentLevel.width):
-                if (game.currentLevel.walls[x][y]):
-                    game.currentLevel.walls[x][y].draw()
+        for y in range(Level.current.height):
+            for x in range(Level.current.width):
+                if (Level.current.floors[x][y]):
+                    Level.current.floors[x][y].draw((x,y))
+        for y in range(Level.current.height):
+            for x in range(Level.current.width):
+                if (Level.current.walls[x][y]):
+                    Level.current.walls[x][y].draw()
             for entity in entityPositions[y]:
                 entity.draw()
         pygame.display.flip()
 
     def main(game):
         while game.running:
+            GameLoop.updateDeltaTime()
             for event in pygame.event.get():
                 if event.type == locals.QUIT:
                     game.quit()

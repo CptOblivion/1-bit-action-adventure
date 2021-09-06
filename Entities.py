@@ -1,23 +1,23 @@
 import os
 import pygame
 from pygame.math import Vector2
-import Sprites as s
-import Levels
-import GameLoops
+import sprite as s
+import level as lv
+import gameloop as g
 
 class Entity:
     #objects in scene
-    def __init__(self, name, position, sprite, origin=(0,0)):
+    def __init__(self, name, level, position, sprite, origin=(0,0)):
         self.name = name
         self.position=Vector2(position)
         if (type(sprite) == str):
             self.sprite=Sprite(sprite, s.Sprite.State(
-                (s.Sprite.Frame(pygame.Rect(0,0,Levels.Level.current.tileSize,Levels.Level.current.tileSize)),))) #this is a mess
+                (s.Sprite.Frame(pygame.Rect(0,0,level.tileSize,level.tileSize)),))) #this is a mess
         else:
             self.sprite=sprite
         self.active=True
         self.origin=Vector2(origin)
-        self.level = Levels.Level.current
+        self.level = level
         if (self.level):
             self.level.entities.append(self)
     def setActive(self, state):
@@ -44,11 +44,11 @@ class Actor(Entity):
             self.collidingObType=collidingObType
             self.force = force
     #has collision
-    def __init__(self, name, position, collisionBounds, sprite, origin=(0,0), ghost=False):
+    def __init__(self, name, level, position, collisionBounds, sprite, origin=(0,0), ghost=False):
         #TODO: add static tag (never check wall or floor collisions)
         #TODO: add onlyCollidePlayer tag (for performance, self explanatory)
 
-        Entity.__init__(self, name, position, sprite, origin=origin)
+        Entity.__init__(self, name, level, position, sprite, origin=origin)
         self.collisionBounds=collisionBounds
         if (self.level): self.level.actors.append(self)
         self.ghost=ghost
@@ -86,13 +86,14 @@ class Actor(Entity):
         
 class Character(Actor):
     def __init__(self, name, position, collisionBounds, sprite, origin=(0,0)):
+        level=lv.Level.current
         self.facing=Vector2(1,0)
         reqStates=('idle_-1-1', 'idle_0-1', 'idle_1-1', 'idle_-10', 'idle_10', 'idle_-11', 'idle_01', 'idle_11',
                   'walk_-1-1', 'walk_0-1', 'walk_1-1', 'walk_-10', 'walk_10', 'walk_-11', 'walk_01', 'walk_11')
         for state in reqStates:
             if (not state in sprite.states):
                 raise AttributeError('required state ' + state + ' not in sprite!')
-        Actor.__init__(self, name, position, collisionBounds, sprite, origin)
+        Actor.__init__(self, name, level, position, collisionBounds, sprite, origin)
     def move(self, vec, faceMovement=True, overrideAnimation=False):
         Actor.move(self, vec)
         if faceMovement:
@@ -117,10 +118,10 @@ class Player(Character):
     current=None
     def __init__(self, position=(100,100)):
         Player.current=self
-        self.walkSpeed = 1.3
-        self.dodgeSpeed = 3
-        self.dodgeTime=12
-        self.backstepTime=5
+        self.walkSpeed = 100
+        self.dodgeSpeed = 500
+        self.dodgeTime=.1
+        self.backstepTime=.05
         collisionBounds = pygame.Rect(-6,-4,12,8)
         #states: 'normal', 'dodge', 'damage'
         self.state='normal'
@@ -132,7 +133,7 @@ class Player(Character):
         #h=16
         w=dataPixel[0]+1
         h=dataPixel[1]+1
-        tIdle, tWalk,tDodge=(50,6,100)
+        tIdle, tWalk,tDodge=(.25,.08,10)
         xIdle, xWalk1, xWalk2, xDodge = (0,w,w*2, w*3)
         ul, u, ur, l, r, dl, d, dr = (h*5,h*6,h*7,h*4,0,h*3,h*2,h)
 
@@ -196,11 +197,11 @@ class Player(Character):
         Character.__init__(self, 'player', position, collisionBounds,
                        s.Sprite(sheetName, 'idle_10', states = animDict, sheet=playerSheet),origin=(-8,-15))
         self.moveVec = Vector2(0,0)
-        GameLoops.GameLoop.inputEvents['moveUp'].subscribers.append(self.moveUp)
-        GameLoops.GameLoop.inputEvents['moveDown'].subscribers.append(self.moveDown)
-        GameLoops.GameLoop.inputEvents['moveLeft'].subscribers.append(self.moveLeft)
-        GameLoops.GameLoop.inputEvents['moveRight'].subscribers.append(self.moveRight)
-        GameLoops.GameLoop.inputEvents['dodge'].subscribers.append(self.dodge)
+        g.GameLoop.inputEvents['moveUp'].subscribers.append(self.moveUp)
+        g.GameLoop.inputEvents['moveDown'].subscribers.append(self.moveDown)
+        g.GameLoop.inputEvents['moveLeft'].subscribers.append(self.moveLeft)
+        g.GameLoop.inputEvents['moveRight'].subscribers.append(self.moveRight)
+        g.GameLoop.inputEvents['dodge'].subscribers.append(self.dodge)
         self.debugCollider=None
 
         #self.debugCollider = (0,255,0)
@@ -209,7 +210,7 @@ class Player(Character):
         if (self.debugCollider):
             tempBox = pygame.Surface((self.collisionBounds.width, self.collisionBounds.height))
             tempBox.fill(self.debugCollider)
-            GameLoops.Window.current.screen.blit(tempBox, self.position+self.collisionBounds.topleft)
+            g.Window.current.screen.blit(tempBox, self.position+self.collisionBounds.topleft)
     def onCollide(self, collision):
         super().onCollide(collision)
         if (self.debugCollider):
@@ -252,12 +253,12 @@ class Player(Character):
         if (self.state=='normal'):
             vec = self.moveVec
             if (vec.magnitude() > 0):
-                vec=vec.normalize() * self.walkSpeed
+                vec=vec.normalize() * self.walkSpeed * g.deltaTime
             self.move(vec)
         elif self.state=='dodge':
-            vec = self.dodgeVec * self.dodgeSpeed
+            vec = self.dodgeVec * self.dodgeSpeed * g.deltaTime
             self.move(vec, faceMovement=False, overrideAnimation=True)
-            self.dodgeTimer -= 1
+            self.dodgeTimer -= g.deltaTime
             if (self.dodgeTimer <=0):
                 self.state='normal'
 
