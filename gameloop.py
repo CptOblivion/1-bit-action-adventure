@@ -119,8 +119,25 @@ class GameLoop:
 
 class Window:
     current = None
+    framerates=[]
     def __init__(self):
+        pygame.font.init()
+        self.weightedFramerateCount=100
+        for i in range(self.weightedFramerateCount):
+            Window.framerates.append(0)
+        #print(pygame.font.get_fonts())
+        self.font=pygame.font.Font(pygame.font.match_font('arial'), 16)
         self.width = 400
         self.height = 240
         self.screen = pygame.display.set_mode((self.width, self.height))
         Window.current=self
+    def framerateCounter(self):
+        if(deltaTime != 0):
+            del Window.framerates[0]
+            Window.framerates.append(1/deltaTime)
+            framerate = 0
+            for f in Window.framerates:
+                framerate += f
+            framerate /= self.weightedFramerateCount
+            self.screen.blit(self.font.render(str(int(framerate)), False, (0,255,0)), (5,5))
+

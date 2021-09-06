@@ -103,6 +103,7 @@ class Level:
                     self.walls[x][y].draw()
             for entity in entityPositions[y]:
                 entity.draw()
+        g.Window.current.framerateCounter()
         pygame.display.flip()
     def getWall(self, position, oobReturn=None):
         if (position[0] < 0 or position[0] >= self.width or
@@ -145,7 +146,7 @@ class WallEntry:
         if (self.wall):
             cached=self.corners==[[7,7],[7,7]]
             if (cache):
-                print(self.corners, cached)
+                #print(self.corners, cached)
                 if (cached):
                     self.wall.draw(self.position, self.corners, surface=cache)
             else:
