@@ -4,6 +4,7 @@ from pygame.math import Vector2
 import sprite as s
 import level as lv
 import gameloop as g
+import random
 
 class Entity:
     #objects in scene
@@ -47,22 +48,26 @@ class Actor(Entity):
     def __init__(self, name, level, position, collisionBounds, sprite, origin=(0,0), ghost=False):
         #TODO: add static tag (never check wall or floor collisions)
         #TODO: add onlyCollidePlayer tag (for performance, self explanatory)
+        #TODO: add noCollideActors tag to only check walls for collision
 
         Entity.__init__(self, name, level, position, sprite, origin=origin)
         self.collisionBounds=collisionBounds
         if (self.level): self.level.actors.append(self)
         self.ghost=ghost
         self.oldPosition = pygame.Vector2(position)
+        self.velocity = pygame.Vector2(0,0)
     def setLevel(self, level):
         if (self.level): self.level.actors.remove(self)
         super().setLevel(level)
         level.actors.append(self)
-
+    def afterPhysics(self):
+        if (self.active):
+            self.move(self.velocity)
     def move(self, vect):
         newPos=self.position+vect
         self.position = newPos
     def destroy(self):
-        Entity.destroy(self)
+        super().destroy()
         self.level.actors.remove(self)
     def testCollision(self, actor):
         if (actor.active and 
@@ -88,14 +93,16 @@ class Character(Actor):
     def __init__(self, name, position, collisionBounds, sprite, origin=(0,0)):
         level=lv.Level.current
         self.facing=Vector2(1,0)
+        self.totalForce = Vector2(0,0)
         reqStates=('idle_-1-1', 'idle_0-1', 'idle_1-1', 'idle_-10', 'idle_10', 'idle_-11', 'idle_01', 'idle_11',
                   'walk_-1-1', 'walk_0-1', 'walk_1-1', 'walk_-10', 'walk_10', 'walk_-11', 'walk_01', 'walk_11')
         for state in reqStates:
             if (not state in sprite.states):
                 raise AttributeError('required state ' + state + ' not in sprite!')
         Actor.__init__(self, name, level, position, collisionBounds, sprite, origin)
-    def move(self, vec, faceMovement=True, overrideAnimation=False):
-        Actor.move(self, vec)
+    def go(self, vec, faceMovement=True, overrideAnimation=False):
+        self.velocity.x= vec.x
+        self.velocity.y = vec.y
         if faceMovement:
             if (vec.magnitude() > 0):
                 self.facing = vec.normalize()
@@ -119,20 +126,21 @@ class Player(Character):
     def __init__(self, position=(100,100)):
         Player.current=self
         self.walkSpeed = 100
-        self.dodgeSpeed = 500
-        self.dodgeTime=.1
+        self.dodgeSpeed = 350
+        self.dodgeSteer = 15
+        self.dodgeTime=.15
         self.backstepTime=.05
+        self.rollBounceTimeScale=5 #on rolling into an obstacle, stun for this factor of rmaining roll time
+        self.rollBounceMinTime = .2 #roll bounce stun will always be at least this long
+        self.rollBounceSpeed = 200 #start speed for roll bounce
+        self.rollBounceFalloff = 25
         collisionBounds = pygame.Rect(-6,-4,12,8)
-        #states: 'normal', 'dodge', 'damage'
+        #states: 'normal', 'roll', 'backstep', 'damage', 'rollBounce'
         self.state='normal'
         sheetName='Guy'
         playerSheet=pygame.image.load(os.path.join(os.getcwd(), 'Assets','Sprites',sheetName+'.png'))
-        #TODO: should we just encode all the sprite state data in pixels?
-        dataPixel=playerSheet.get_at((0,playerSheet.get_height()-1))
-        #w=16
-        #h=16
-        w=dataPixel[0]+1
-        h=dataPixel[1]+1
+        w=16
+        h=16
         tIdle, tWalk,tDodge=(.25,.08,10)
         xIdle, xWalk1, xWalk2, xDodge = (0,w,w*2, w*3)
         ul, u, ur, l, r, dl, d, dr = (h*5,h*6,h*7,h*4,0,h*3,h*2,h)
@@ -196,12 +204,12 @@ class Player(Character):
                   'dodge':s.Sprite.State(((xDodge,l,w,h,100),))}
         Character.__init__(self, 'player', position, collisionBounds,
                        s.Sprite(sheetName, 'idle_10', states = animDict, sheet=playerSheet),origin=(-8,-15))
-        self.moveVec = Vector2(0,0)
-        g.GameLoop.inputEvents['moveUp'].subscribers.append(self.moveUp)
-        g.GameLoop.inputEvents['moveDown'].subscribers.append(self.moveDown)
-        g.GameLoop.inputEvents['moveLeft'].subscribers.append(self.moveLeft)
-        g.GameLoop.inputEvents['moveRight'].subscribers.append(self.moveRight)
-        g.GameLoop.inputEvents['dodge'].subscribers.append(self.dodge)
+        self.moveInputVec = Vector2(0,0)
+        g.GameLoop.inputEvents['moveUp'].add(self.moveUp)
+        g.GameLoop.inputEvents['moveDown'].add(self.moveDown)
+        g.GameLoop.inputEvents['moveLeft'].add(self.moveLeft)
+        g.GameLoop.inputEvents['moveRight'].add(self.moveRight)
+        g.GameLoop.inputEvents['dodge'].add(self.dodge)
         self.debugCollider=None
 
         #self.debugCollider = (0,255,0)
@@ -213,53 +221,121 @@ class Player(Character):
             g.Window.current.screen.blit(tempBox, self.position+self.collisionBounds.topleft)
     def onCollide(self, collision):
         super().onCollide(collision)
+        if (self.state=='roll' and collision.collidingObType == 'wall'):
+            #this bit is a bit jank, but we accumulate force over the course of every frame to check if we're in a corner
+            #(since each individual block push in a corner will be orthogonal, so diagonal rolling into a corner won't bounce
+            self.totalForce += collision.force.normalize()
+            if (self.totalForce.magnitude()>0):
+                force=self.totalForce.normalize()
+                if (self.dodgeVec.dot(force) < -.8):
+                    self.state='rollBounce'
+                    g.Window.current.flashBk(.03,1)
+                    dustVec=Vector2(force.y,-force.x)
+                    self.spawnDust(dustVec*2-force*.1, count=2)
+                    self.spawnDust(-dustVec*2-force*.1, count=2)
+                    self.facing = collision.force*-1
+                    self.dodgeVec = force
+                    self.dodgeTimer = max(self.dodgeTimer*self.rollBounceTimeScale,self.rollBounceMinTime)
+                    #TODO: make 'stunned' state with 'hurt' sprites but no damage blink
+                    self.sprite.changeState('idle'+self.getSpriteDirection()) #placeholder sprite
+                    #TODO: dust poof on collide (throw dust perpendicular to normal, both sides)
         if (self.debugCollider):
             self.debugCollider = (255,0,0)
     def move(self, vect, faceMovement=True, overrideAnimation=False):
-        Character.move(self, vect, faceMovement=faceMovement, overrideAnimation=overrideAnimation)
+        Character.move(self, vect)
     def moveUp(self, state):
         if (state):
-            self.moveVec += Vector2(0,-1)
+            self.moveInputVec += Vector2(0,-1)
         else:
-            self.moveVec -= Vector2(0,-1)
+            self.moveInputVec -= Vector2(0,-1)
     def moveDown(self, state):
         if (state):
-            self.moveVec += Vector2(0,1)
+            self.moveInputVec += Vector2(0,1)
         else:
-            self.moveVec -= Vector2(0,1)
+            self.moveInputVec -= Vector2(0,1)
     def moveLeft(self, state):
         if (state):
-            self.moveVec += Vector2(-1,0)
+            self.moveInputVec += Vector2(-1,0)
         else:
-            self.moveVec -= Vector2(-1,0)
+            self.moveInputVec -= Vector2(-1,0)
     def moveRight(self, state):
         if (state):
-            self.moveVec += Vector2(1,0)
+            self.moveInputVec += Vector2(1,0)
         else:
-            self.moveVec -= Vector2(1,0)
+            self.moveInputVec -= Vector2(1,0)
     def dodge(self, state):
         if (state):
             if (self.state=='normal'):
-                self.state='dodge'
-                if self.moveVec.magnitude() > 0:
-                    self.dodgeVec=Vector2(self.moveVec.normalize())
+                if self.moveInputVec.magnitude() > 0:
+                    self.state='roll'
+                    self.dodgeVec=Vector2(self.moveInputVec.normalize())
                     self.dodgeTimer=self.dodgeTime
                     self.sprite.changeState('dodge'+self.getSpriteDirection())
+                    self.spawnDust(self.dodgeVec * 3.5, count=3)
                 else:
+                    self.state='backstep'
                     self.dodgeVec=Vector2(self.facing.normalize() * -1)
                     self.dodgeTimer=self.backstepTime
+                    self.spawnDust(self.dodgeVec,count=2)
+    def spawnDust(self, vel, count=5, randStr=1):
+        if not hasattr(self, 'dustSpriteSheet'):
+            self.dustSpriteSheet=s.Sprite.loadSheet('Dust')
+        rx,ry,ra = (.2*randStr,.7*randStr,.15*randStr)
+        cross=Vector2(vel.y, -vel.x)
+        spriteSize=8
+        for i in range(count):
+            rand=random.random()*2-1
+            dust=Particle('dust',self.level, self.position,
+                            pygame.Rect(-3,-1,6,2),
+                            s.Sprite('Dust', s.Sprite.State(((0,0,spriteSize,spriteSize,.25+rand*ra),
+                                                             (spriteSize,0,spriteSize,spriteSize),
+                                                             (spriteSize*2,0,spriteSize,spriteSize))),
+                                     sheet=self.dustSpriteSheet),
+                            .75+rand*ra*3, origin=(-4,-6))
+            dust.velocity=vel * (1-abs(rand)*ry) + cross*rand*rx
+            dust.damping = 8
+
     def update(self):
         Character.update(self)
         if (self.state=='normal'):
-            vec = self.moveVec
+            vec = Vector2(self.moveInputVec)
             if (vec.magnitude() > 0):
                 vec=vec.normalize() * self.walkSpeed * g.deltaTime
-            self.move(vec)
-        elif self.state=='dodge':
+            self.go(vec)
+        elif self.state=='roll' or self.state == 'backstep':
+            self.dodgeVec = (self.dodgeVec + (self.moveInputVec * self.dodgeSteer * g.deltaTime)).normalize()
             vec = self.dodgeVec * self.dodgeSpeed * g.deltaTime
-            self.move(vec, faceMovement=False, overrideAnimation=True)
+            self.velocity=vec
+            self.go(vec, faceMovement=False, overrideAnimation=True)
             self.dodgeTimer -= g.deltaTime
             if (self.dodgeTimer <=0):
                 self.state='normal'
-
+        elif self.state=='rollBounce':
+            vec = self.dodgeVec * self.rollBounceSpeed * g.deltaTime
+            self.dodgeVec *= 1-self.rollBounceFalloff*g.deltaTime
+            self.go(vec, faceMovement=False, overrideAnimation=True)
+            self.velocity=vec
+            self.dodgeTimer -= g.deltaTime
+            if (self.dodgeTimer <= 0):
+                self.state='normal'
+                
+        self.totalForce=Vector2()
         if (self.debugCollider): self.debugCollider=(0,255,0)
+
+class Particle(Actor):
+    def __init__(self, name, level, position, collisionBounds, sprite, life, origin=(0,0)):
+        super().__init__(name, level, position, collisionBounds, sprite, origin=origin)
+        self.life=life
+        self.damping = 0
+    def update(self):
+        super().update()
+        self.velocity *= 1-self.damping*g.deltaTime
+        if (self.life <= 0):
+            self.destroy()
+        self.life -= g.deltaTime
+    def draw(self):
+        super().draw()
+    #def onCollide(self, collision):
+    #    super().onCollide(collision)
+    #    if (collision.collidingObType=='actor'):
+    #        self.velocity += collision.collider.velocity*.01

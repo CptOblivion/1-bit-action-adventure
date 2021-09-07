@@ -13,18 +13,32 @@ class GameLoop:
     levels={}
     def __init__(game):
         GameLoop.current=game
+        game.running = True
         pygame.init()
         pygame.display.set_caption("C'est Une Sword")
         pygame.display.set_icon(pygame.image.load(os.path.join(os.getcwd(), 'Assets','Icon.png')))
+        #TODO: some system so multiple bindings to the same action don't trip the action multiple times
+        #maybe a go-between class that gets toggled on when any key in its bindings is pressed,
+        #   and back off only when all keys are released
+        GameLoop.mapping ={
+            pygame.locals.K_w:'moveUp',
+            pygame.locals.K_UP:'moveUp',
+            pygame.locals.K_s:'moveDown',
+            pygame.locals.K_DOWN:'moveDown',
+            pygame.locals.K_a:'moveLeft',
+            pygame.locals.K_LEFT:'moveLeft',
+            pygame.locals.K_d:'moveRight',
+            pygame.locals.K_RIGHT:'moveRight',
+            pygame.locals.K_SPACE:'dodge',
+            pygame.locals.K_f:'debugDisplay',
+            pygame.locals.K_c:'debugChart'}
+        GameLoop.inputEvents={}
+        for key in GameLoop.mapping:
+            val=GameLoop.mapping[key]
+            if (not val in GameLoop.inputEvents):
+                GameLoop.inputEvents[val] = ev.InputEvent()
+        
         game.window = Window()
-        game.running = True
-        GameLoop.inputEvents={
-            'moveUp':ev.InputEvent(),
-            'moveDown':ev.InputEvent(),
-            'moveLeft':ev.InputEvent(),
-            'moveRight':ev.InputEvent(),
-            'dodge':ev.InputEvent()}
-
         player=ent.Player()
         GameLoop.changeLevel('TestLevel3', 'start')
         GameLoop.lastTime = datetime.datetime.now()
@@ -62,7 +76,7 @@ class GameLoop:
         testActors = []
         for actor in lv.Level.current.actors:
             testActors.append(actor)
-            cellIndex=actor.position//lv.Level.current.tileSize #TODO: make sure floor division is what I think it is
+            cellIndex=actor.position//lv.Level.current.tileSize
             remainder=actor.position - cellIndex * lv.Level.current.tileSize
             remainder -= Vector2(lv.Level.current.tileSize/2,lv.Level.current.tileSize/2)
             if (remainder.x > 0):remainder.x=1
@@ -72,17 +86,12 @@ class GameLoop:
             for x in range(0,2):
                 for y in range(0,2):
                     wall = lv.Level.current.getWall((int(cellIndex.x + remainder.x*x), int(cellIndex.y + remainder.y*y)))
-                    if(wall and wall.wall):
-                        collisionBounds = actor.collisionBounds.move(actor.position)
-                        collision = wall.collide(collisionBounds)
-                        if (collision):
-                            actor.onCollide(collision)
-                            actor.position += collision.force
+                    if(wall and wall.wall): wall.collide(actor)
+            actor.afterPhysics()
         while len(testActors) > 1:
             actor=testActors.pop(0)
             for actor2 in testActors:
                 actor.gameloopCollision(actor2)
-        None
     def main(game):
         while game.running:
             GameLoop.updateDeltaTime()
@@ -92,27 +101,11 @@ class GameLoop:
                 elif event.type== locals.KEYDOWN:
                     if event.key == locals.K_ESCAPE:
                         game.quit()
-                    elif event.key == locals.K_SPACE:
-                        GameLoop.inputEvents['dodge'].invoke(True)
-                    elif event.key == pygame.locals.K_w:
-                        GameLoop.inputEvents['moveUp'].invoke(True)
-                    elif event.key == locals.K_s:
-                        GameLoop.inputEvents['moveDown'].invoke(True)
-                    elif event.key == locals.K_a:
-                        GameLoop.inputEvents['moveLeft'].invoke(True)
-                    elif event.key == locals.K_d:
-                        GameLoop.inputEvents['moveRight'].invoke(True)
+                    elif event.key in GameLoop.mapping:
+                        GameLoop.inputEvents[GameLoop.mapping[event.key]].invoke(True)
                 elif event.type== locals.KEYUP:
-                    if event.key == locals.K_SPACE:
-                        GameLoop.inputEvents['dodge'].invoke(False)
-                    elif event.key == pygame.locals.K_w:
-                        GameLoop.inputEvents['moveUp'].invoke(False)
-                    elif event.key == locals.K_s:
-                        GameLoop.inputEvents['moveDown'].invoke(False)
-                    elif event.key == locals.K_a:
-                        GameLoop.inputEvents['moveLeft'].invoke(False)
-                    elif event.key == locals.K_d:
-                        GameLoop.inputEvents['moveRight'].invoke(False)
+                    if event.key in GameLoop.mapping:
+                        GameLoop.inputEvents[GameLoop.mapping[event.key]].invoke(False)
             game.update()
             game.physics()
             lv.Level.current.draw()
@@ -122,22 +115,71 @@ class Window:
     framerates=[]
     def __init__(self):
         pygame.font.init()
-        self.weightedFramerateCount=100
-        for i in range(self.weightedFramerateCount):
-            Window.framerates.append(0)
         #print(pygame.font.get_fonts())
-        self.font=pygame.font.Font(pygame.font.match_font('arial'), 16)
         self.width = 400
         self.height = 240
-        self.screen = pygame.display.set_mode((self.width, self.height))
+        self.mult=3
+        self.screenSize=(self.width*self.mult, self.height*self.mult)
+        self.font=pygame.font.Font(pygame.font.match_font('arial'), 16*self.mult)
+        self.screen=pygame.Surface((self.width, self.height))
+        self.actualScreen = pygame.display.set_mode((self.width*self.mult, self.height*self.mult))
+        self.frameChart = pygame.Surface((600,300), pygame.SRCALPHA, 32)
+        self.drawFramerate=False
+        self.drawChart = False
+        GameLoop.inputEvents['debugDisplay'].add(self.toggleDrawFramerate)
+        GameLoop.inputEvents['debugChart'].add(self.toggleDrawFramechart)
         Window.current=self
+        self.flashTime=0
+        self.flashColor=0
+    def initializeFramerates(self):
+        self.weightedFramerateCount=100
+        framerates=[]
+        for i in range(self.weightedFramerateCount):
+            framerates.append(0)
+        Window.framerates=framerates
+    def initializeFramechart(self):
+        self.frameChart.fill((0,0,0,0))
     def framerateCounter(self):
-        if(deltaTime != 0):
+        if(self.drawFramerate and deltaTime != 0):
             del Window.framerates[0]
-            Window.framerates.append(1/deltaTime)
+            f = 1/deltaTime
+            Window.framerates.append(f)
             framerate = 0
             for f in Window.framerates:
                 framerate += f
             framerate /= self.weightedFramerateCount
-            self.screen.blit(self.font.render(str(int(framerate)), False, (0,255,0)), (5,5))
+            #TODO: start with an empty list, just overwrite when at length (average won't creep up from 0 at start, that way)
+            #TODO: maybe just track a position and overwrite that index, instead of deleting and appending
+            if (self.drawChart):
+                #costs a few frames on its own
+                self.frameChart.scroll(1,0)
+                h = self.frameChart.get_height()
+                self.frameChart.fill((0,0,0,0),pygame.Rect(0,0,1,h))
+                self.frameChart.fill((0,255,0,128), pygame.Rect(0,h-f, 1, f))
+                self.frameChart.fill((0,0,255,128), pygame.Rect(0,h-framerate+2, 1, 4))
+                self.actualScreen.blit(self.frameChart, (0,0))
+            self.actualScreen.blit(self.font.render(str(int(framerate)), False, (0,255,0)), (5*self.mult,5*self.mult))
+    def flip(self):
+        pygame.transform.scale(self.screen,self.screenSize,self.actualScreen)
+        if (self.flashTime>0):
+            self.actualScreen.fill((255*self.flashColor,255*self.flashColor,255*self.flashColor))
+            self.flashTime -= deltaTime
+        self.framerateCounter()
+        pygame.display.flip()
+    def flashBk(self, time, col):
+        self.flashTime=time
+        self.flashColor = col
+    def toggleDrawFramerate(self, state):
+        if (state):
+            self.drawFramerate = not self.drawFramerate
+            if (self.drawFramerate):
+                self.initializeFramerates()
+                if (self.drawChart):
+                    self.initializeFramechart()
+
+    def toggleDrawFramechart(self, state):
+        if (state):
+            self.drawChart = not self.drawChart
+            if (self.drawChart and self.drawFramerate):
+                self.initializeFramechart()
 

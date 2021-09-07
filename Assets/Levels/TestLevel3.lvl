@@ -3,9 +3,10 @@ Image:TestLevel3.png
 Tileset:Tileset.png
 Tilesize:16
 [Floors]
-0:NormalFloor,0,0
+0:NormalFloor,6,0
+32:MushroomFloor,6,1
 [Walls]
-255:NormalWall,0,0
+255:NormalWall,6,0,32
 [Entities]
 [Doors]:
 b1:18,14,B,TestLevel1,tr1

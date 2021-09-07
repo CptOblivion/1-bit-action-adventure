@@ -49,16 +49,17 @@ class Level:
         for iniIndex in self.config['Floors']:
             iniString=self.config['Floors'][iniIndex]
             name,x,y=iniString.split(',')
-            pixel = self.tileset.get_at((int(x),int(y)))
-            self.floorTiles[iniIndex]=Tile(name, pygame.Rect(pixel[0]*self.tileSize,pixel[1]*self.tileSize,
+            x,y=(int(x), int(y))
+            self.floorTiles[iniIndex]=Tile(name, pygame.Rect(x*self.tileSize,y*self.tileSize,
                                                             self.tileSize,self.tileSize), self.tileset)
         for iniIndex in self.config['Walls']:
             iniString=self.config['Walls'][iniIndex]
-            name,x,y = iniString.split(',')
+            name,x,y,h = iniString.split(',')
+            x,y,h =(int(x), int(y), int(h))
             pixel=self.tileset.get_at((int(x),int(y)))
             #print(pixel)
-            self.wallTiles[iniIndex]=WallTile(name, pygame.Rect(pixel[0]*self.tileSize,pixel[1]*self.tileSize,
-                                                            self.tileSize,pixel[2]), self.tileset, baseHeight=self.tileSize)
+            self.wallTiles[iniIndex]=WallTile(name, pygame.Rect(x*self.tileSize,y*self.tileSize,
+                                                            self.tileSize,h), self.tileset, baseHeight=self.tileSize)
 
         for x in range(self.width):
             for y in range(self.height):
@@ -83,7 +84,6 @@ class Level:
                 if (self.floors[x][y]): self.floors[x][y].draw((x,y),surface=self.tileCache)
                 if (self.walls[x][y]): self.walls[x][y].draw(cache=self.tileCache)
     def draw(self):
-        #g.Window.current.screen.fill((255,255,255))
         entityPositions=[]
         for i in range(self.height):
             entityPositions.append([])
@@ -92,19 +92,16 @@ class Level:
                 gridCell = int(entity.position.y / self.tileSize)
                 if (0 <= gridCell < len(entityPositions)):
                     entityPositions[gridCell].append(entity)
-        #for y in range(self.height):
-        #    for x in range(self.width):
-        #        if (self.floors[x][y]):
-        #            self.floors[x][y].draw((x,y))
+
         g.Window.current.screen.blit(self.tileCache,(0,0))
         for y in range(self.height):
             for x in range(self.width):
                 if (self.walls[x][y]):
                     self.walls[x][y].draw()
-            for entity in entityPositions[y]:
+            #sort cell by y position first
+            for entity in sorted(entityPositions[y], key=lambda entity: entity.position.y):
                 entity.draw()
-        g.Window.current.framerateCounter()
-        pygame.display.flip()
+        g.Window.current.flip()
     def getWall(self, position, oobReturn=None):
         if (position[0] < 0 or position[0] >= self.width or
             position[1] < 0 or position[1] >= self.height):
@@ -122,10 +119,13 @@ class WallEntry:
         self.wall=None
         self.position=position
         self.corners=[[0,0],[0,0]]
+        self.cached=False
         self.rect = pygame.Rect(position[0]* level.tileSize, position[1]* level.tileSize,
                                 level.tileSize, level.tileSize)
     def updateWall(self):
         if (self.wall):
+            doCache=True
+            cacheList=(2,3,7)
             for x in range(-1,2,2):
                 for y in range(-1,2,2):
                     offsetIndex=0
@@ -136,6 +136,13 @@ class WallEntry:
                     if (self.level.getWall((self.position[0]+x, self.position[1]+y),self).wall == self.wall):
                         offsetIndex += 1
                     self.corners[max(0,x)][max(0,y)] = offsetIndex
+                    if (not offsetIndex in cacheList): doCache = False
+            self.cached=doCache
+            #self.cached=self.corners==[[7,7],[7,7]]
+            #don't forget to redraw cache after updating
+            #maybe can get away with just drawing this tile and every one below it in the same column
+            #maybe also just mark the tile's height in an array of all the columns (unless a higher tile is already marked)
+            #   then just update marked columns from that height down
     def setWall(self, wall):
         self.wall=wall
         for x in range(-1,2):
@@ -144,15 +151,14 @@ class WallEntry:
                 if (neighbor): neighbor.updateWall()
     def draw(self, cache=None):
         if (self.wall):
-            cached=self.corners==[[7,7],[7,7]]
             if (cache):
-                #print(self.corners, cached)
-                if (cached):
+                if (self.cached):
                     self.wall.draw(self.position, self.corners, surface=cache)
             else:
-                if (not cached):
+                if (not self.cached):
                     self.wall.draw(self.position, self.corners)
-    def collide(self, collisionBox):
+    def collide(self, actor, applyForce = True):
+        collisionBox=actor.collisionBounds.move(actor.position + actor.velocity)
         if (self.rect.colliderect(collisionBox)):
             normal=Vector2(collisionBox.center) - Vector2(self.rect.center)
             sign=[1,1]
@@ -164,10 +170,20 @@ class WallEntry:
             #TODO: use vel to bias result
             #   (goal: so if actor hits a corner, the are "nudged" sideways and can continue moving
             #   instead of being stopped because two squares overlapped by 2 pixels
-            if (abs(force.x) > abs(force.y)): force.x=0
-            else: force.y=0
-            return(entities.Actor.Collision(self, force,'wall'))
-        return None
+            if (abs(force.x) > abs(force.y)):
+                #normal is along the y axis
+                force.x=0
+                if (applyForce):
+                    #TODO: there's gotta be a way to simplify this down
+                    actor.position.y += force.y + actor.velocity.y
+                    actor.velocity.y=0
+            else:
+                #normal is along the x axis
+                force.y=0
+                if (applyForce):
+                    actor.position.x += force.x + actor.velocity.x
+                    actor.velocity.x=0
+            actor.onCollide(entities.Actor.Collision(self, force,'wall'))
 
 class Tile:
     def __init__(self, name, rect, tileset): #XY tuple, surface, XY tuple

@@ -3,9 +3,11 @@ Image:TestLevel1.png
 Tileset:Tileset.png
 Tilesize:16
 [Floors]
-0:NormalFloor,0,0
+0:NormalFloor,9,0
+32:CrackedFloor,9,1
+64:Sand,6,0
 [Walls]
-255:NormalWall,0,0
+255:NormalWall,6,0,32
 [Entities]
 [Doors]:
 tl1:5,0,T,TestLevel2,b1

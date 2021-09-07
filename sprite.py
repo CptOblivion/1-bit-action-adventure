@@ -4,9 +4,13 @@ from pygame.math import Vector2
 import gameloop as g
 
 class Sprite:
+    def loadSheet(sheetName):
+        return pygame.image.load(os.path.join(os.getcwd(), 'Assets','Sprites',sheetName+'.png'))
     class State:
         def __init__(self, frames):
             self.frames=[]
+            if not (type(frames) == list or type(frames) == tuple):
+                frames=(frames,) #single frames can be passed, nest it in an empty tuple for simple processing
             for frame in frames:
                 if (type(frame) == Sprite.Frame):
                     self.frames.append(frame)
@@ -34,15 +38,17 @@ class Sprite:
                 rect = args[0]
             else:
                 rect = pygame.Rect(args[0],args[1],args[2],args[3])
+                if (len(args)==5): time=args[4]
             self.rect=rect
             self.time=time
     def __init__(self, sheetName, startState, states={}, sheet=None):
         self.sheetName=sheetName
         if (sheet):
-            #for sheets that are already loaded
+            #TODO: cache sheets (dict in Sprite that tracks sheet names)
+            #   watch memory bloat though, might need to clear the cache periodically
             self.sheet=sheet
         else:
-            self.sheet=pygame.image.load(os.path.join(os.getcwd(), 'Assets','Sprites',sheetName+'.png'))
+            self.sheet=Sprite.loadSheet(sheetName)
         self.animTimer=0
         self.nextFrameTime=0
         if (type(startState) == str and states):
