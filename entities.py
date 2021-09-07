@@ -10,7 +10,6 @@ class Entity:
     #objects in scene
     def __init__(self, name, level, sprite, position=(100,100), origin=(0,0)):
         self.name = name
-        print(position)
         self.position=Vector2(position)
         if (type(sprite) == str):
             self.sprite=Sprite(sprite, s.Sprite.State(
@@ -337,7 +336,8 @@ class Particle(Actor):
         self.life=life
         self.damping = 0
         self.collideActors=False
-        #TODO: remember what TODO I was going to put here
+        #TODO: some sort of flag (in Entity, probably) to destroy on level change
+        #   maybe just subscribe to on level change (don't forget to unsubscribe on destroy)
     def update(self):
         super().update()
         self.velocity *= 1-self.damping*g.deltaTime
@@ -347,5 +347,27 @@ class Particle(Actor):
     def draw(self):
         super().draw()
 class EffectTrigger(Actor):
+    #TODO: make Trigger base class
+    def quickAdd(name, position, effect, effectValues):
+        trigger = EffectTrigger(name, lv.Level.current,
+                                pygame.Rect(0, 0, lv.Level.tileSize, lv.Level.tileSize),
+                                None, position=position)
+        trigger.effect=effect
+        trigger.effectValues = effectValues
+        return trigger
     def __init__(self, name, level, collisionBounds,sprite,**kwargs):
-        pass
+        self.effect=None
+        self.effectValues=None
+        self.ghost=True
+    def onTrigger(self):
+        if (self.effect == 'bump'):
+            #TODO: test if this actually works
+            g.Window.current.bump(*self.effectValues)
+        elif (self.effect == 'shake'):
+            g.Window.current.shake(*self.effectValues)
+        self.destroy()
+
+    def onCollide(self, collision):
+        super().onCollide(collision)
+        if (collision.collider == Player.current):
+            self.onTrigger()
