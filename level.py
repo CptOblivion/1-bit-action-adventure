@@ -158,7 +158,7 @@ class WallEntry:
                 if (not self.cached):
                     self.wall.draw(self.position, self.corners)
     def collide(self, actor, applyForce = True):
-        collisionBox=actor.collisionBounds.move(actor.position + actor.velocity)
+        collisionBox=actor.collisionBounds.move(actor.position + actor.velocity*g.deltaTime)
         if (self.rect.colliderect(collisionBox)):
             normal=Vector2(collisionBox.center) - Vector2(self.rect.center)
             sign=[1,1]
@@ -175,13 +175,13 @@ class WallEntry:
                 force.x=0
                 if (applyForce):
                     #TODO: there's gotta be a way to simplify this down
-                    actor.position.y += force.y + actor.velocity.y
+                    actor.position.y += force.y + actor.velocity.y * g.deltaTime
                     actor.velocity.y=0
             else:
                 #normal is along the x axis
                 force.y=0
                 if (applyForce):
-                    actor.position.x += force.x + actor.velocity.x
+                    actor.position.x += force.x + actor.velocity.x * g.deltaTime
                     actor.velocity.x=0
             actor.onCollide(entities.Actor.Collision(self, force,'wall'))
 

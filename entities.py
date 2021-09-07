@@ -62,7 +62,7 @@ class Actor(Entity):
         level.actors.append(self)
     def afterPhysics(self):
         if (self.active):
-            self.move(self.velocity)
+            self.move(self.velocity*g.deltaTime)
     def move(self, vect):
         newPos=self.position+vect
         self.position = newPos
@@ -229,11 +229,10 @@ class Player(Character):
                 force=self.totalForce.normalize()
                 if (self.dodgeVec.dot(force) < -.8):
                     self.state='rollBounce'
-                    #g.Window.current.flashBk(1,.03)
                     g.Window.current.bump(int(force.x*-1.5),int(force.y*-1.5),.05)
                     dustVec=Vector2(force.y,-force.x)
-                    self.spawnDust(dustVec*2-force*.1, count=2)
-                    self.spawnDust(-dustVec*2-force*.1, count=2)
+                    self.spawnDust(dustVec*200-force*15, count=2)
+                    self.spawnDust(-dustVec*200-force*15, count=2)
                     self.facing = collision.force*-1
                     self.dodgeVec = force
                     self.dodgeTimer = max(self.dodgeTimer*self.rollBounceTimeScale,self.rollBounceMinTime)
@@ -272,12 +271,12 @@ class Player(Character):
                     self.dodgeVec=Vector2(self.moveInputVec.normalize())
                     self.dodgeTimer=self.dodgeTime
                     self.sprite.changeState('dodge'+self.getSpriteDirection())
-                    self.spawnDust(self.dodgeVec * 3.5, count=3)
+                    self.spawnDust(self.dodgeVec * 500, count=3)
                 else:
                     self.state='backstep'
                     self.dodgeVec=Vector2(self.facing.normalize() * -1)
                     self.dodgeTimer=self.backstepTime
-                    self.spawnDust(self.dodgeVec,count=2)
+                    self.spawnDust(self.dodgeVec*150,count=2)
     def spawnDust(self, vel, count=5, randStr=1):
         if not hasattr(self, 'dustSpriteSheet'):
             self.dustSpriteSheet=s.Sprite.loadSheet('Dust')
@@ -294,30 +293,29 @@ class Player(Character):
                                                              (spriteSize*2,0,spriteSize,spriteSize))),
                                      sheet=self.dustSpriteSheet),
                             .75+rand*ra*3, origin=(-4,-6))
-            dust.velocity=(vel * (1-abs(rand)*ry) + cross*rand*rx) *g.deltaTime*150
-            #dust.velocity=(vel) *g.deltaTime*150
-            dust.damping = 8
+            dust.velocity=vel * (1-abs(rand)*ry) + cross*rand*rx
+            dust.damping=8
 
     def update(self):
         Character.update(self)
         if (self.state=='normal'):
             vec = Vector2(self.moveInputVec)
             if (vec.magnitude() > 0):
-                vec=vec.normalize() * self.walkSpeed * g.deltaTime
+                vec=vec.normalize() * self.walkSpeed# * g.deltaTime
             self.go(vec)
         elif self.state=='roll' or self.state == 'backstep':
             self.dodgeVec = (self.dodgeVec + (self.moveInputVec * self.dodgeSteer * g.deltaTime)).normalize()
-            vec = self.dodgeVec * self.dodgeSpeed * g.deltaTime
+            vec = self.dodgeVec * self.dodgeSpeed# * g.deltaTime
             self.velocity=vec
             self.go(vec, faceMovement=False, overrideAnimation=True)
             self.dodgeTimer -= g.deltaTime
             if (self.dodgeTimer <=0):
                 self.state='normal'
         elif self.state=='rollBounce':
-            vec = self.dodgeVec * self.rollBounceSpeed * g.deltaTime
+            vec = self.dodgeVec * self.rollBounceSpeed #* g.deltaTime
             self.dodgeVec *= 1-self.rollBounceFalloff*g.deltaTime
             self.go(vec, faceMovement=False, overrideAnimation=True)
-            self.velocity=vec
+            #self.velocity=vec
             self.dodgeTimer -= g.deltaTime
             if (self.dodgeTimer <= 0):
                 self.state='normal'
