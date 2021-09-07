@@ -5,7 +5,7 @@ import gameloop as g
 
 class LevelDoor(e.Actor):
 	def __init__(self, name, level, position, collisionBounds, sprite, exitDirection,linkedLevel,linkedDoor):
-		super().__init__(name, level, position,collisionBounds,sprite,ghost=True)
+		super().__init__(name, level, collisionBounds,sprite,ghost=True, position=position)
 		#TODO: maybe this should be a floor or a wall tile, actually
 		#	collision is implemented for entities tho
 		self.exitDirection=exitDirection

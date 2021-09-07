@@ -75,19 +75,20 @@ class GameLoop:
     def physics(game):
         testActors = []
         for actor in lv.Level.current.actors:
-            testActors.append(actor)
-            cellIndex=actor.position//lv.Level.current.tileSize
-            remainder=actor.position - cellIndex * lv.Level.current.tileSize
-            remainder -= Vector2(lv.Level.current.tileSize/2,lv.Level.current.tileSize/2)
-            if (remainder.x > 0):remainder.x=1
-            else: remainder.x=-1
-            if (remainder.y > 0): remainder.y=1
-            else: remainder.y=-1
-            for x in range(0,2):
-                for y in range(0,2):
-                    wall = lv.Level.current.getWall((int(cellIndex.x + remainder.x*x), int(cellIndex.y + remainder.y*y)))
-                    if(wall and wall.wall): wall.collide(actor)
-            actor.afterPhysics()
+            if (actor.active):
+                if (actor.collideActors): testActors.append(actor)
+                cellIndex=actor.position//lv.Level.current.tileSize
+                remainder=actor.position - cellIndex * lv.Level.current.tileSize
+                remainder -= Vector2(lv.Level.current.tileSize/2,lv.Level.current.tileSize/2)
+                if (remainder.x > 0):remainder.x=1
+                else: remainder.x=-1
+                if (remainder.y > 0): remainder.y=1
+                else: remainder.y=-1
+                for x in range(0,2):
+                    for y in range(0,2):
+                        wall = lv.Level.current.getWall((int(cellIndex.x + remainder.x*x), int(cellIndex.y + remainder.y*y)))
+                        if(wall and wall.wall): wall.collide(actor)
+                actor.afterPhysics()
         while len(testActors) > 1:
             actor=testActors.pop(0)
             for actor2 in testActors:
@@ -134,6 +135,8 @@ class Window:
         #bump the screen over an amount
         self.bumpVec=None
         self.bumpTime=0
+        self.shakeCount=0
+        self.shakeTime=0
         #TODO: screenflash removed because epillepsy, but check if it's bad on a tiny not-backlit handheld later
     def initializeFramerates(self):
         self.weightedFramerateCount=100
@@ -164,15 +167,25 @@ class Window:
                 self.actualScreen.blit(self.frameChart, (0,0))
             self.actualScreen.blit(self.font.render(str(int(framerate)), False, (0,255,0)), (5*self.mult,5*self.mult))
     def flip(self):
-        if (self.bumpTime > 0):
-            self.screen.scroll(self.bumpVec[0],self.bumpVec[1])
-            self.bumpTime-= deltaTime
+        self.doEffects()
         pygame.transform.scale(self.screen,self.screenSize,self.actualScreen)
         self.framerateCounter()
         pygame.display.flip()
     def bump(self, x,y,time):
         self.bumpTime=time
         self.bumpVec=(x,y)
+    def shake(self, count, x,y, time):
+        self.shakeCount=count
+        self.shakeTime=time
+        self.bump(x,y,time)
+    def doEffects(self):
+        #TODO: add abortEffects() command, to cease all effects
+        if (self.bumpTime > 0):
+            self.screen.scroll(self.bumpVec[0],self.bumpVec[1])
+            self.bumpTime-= deltaTime
+            if (self.bumpTime <=0 and self.shakeCount>0):
+                self.shakeCount-=1
+                self.bump(-self.bumpVec[0],-self.bumpVec[1], self.shakeTime)
     def toggleDrawFramerate(self, state):
         if (state):
             self.drawFramerate = not self.drawFramerate
