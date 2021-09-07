@@ -129,8 +129,12 @@ class Window:
         GameLoop.inputEvents['debugDisplay'].add(self.toggleDrawFramerate)
         GameLoop.inputEvents['debugChart'].add(self.toggleDrawFramechart)
         Window.current=self
-        self.flashTime=0
-        self.flashColor=0
+
+        #effects (placeholder variables, mostly)
+        #bump the screen over an amount
+        self.bumpVec=None
+        self.bumpTime=0
+        #TODO: screenflash removed because epillepsy, but check if it's bad on a tiny not-backlit handheld later
     def initializeFramerates(self):
         self.weightedFramerateCount=100
         framerates=[]
@@ -160,15 +164,15 @@ class Window:
                 self.actualScreen.blit(self.frameChart, (0,0))
             self.actualScreen.blit(self.font.render(str(int(framerate)), False, (0,255,0)), (5*self.mult,5*self.mult))
     def flip(self):
+        if (self.bumpTime > 0):
+            self.screen.scroll(self.bumpVec[0],self.bumpVec[1])
+            self.bumpTime-= deltaTime
         pygame.transform.scale(self.screen,self.screenSize,self.actualScreen)
-        if (self.flashTime>0):
-            self.actualScreen.fill((255*self.flashColor,255*self.flashColor,255*self.flashColor))
-            self.flashTime -= deltaTime
         self.framerateCounter()
         pygame.display.flip()
-    def flashBk(self, time, col):
-        self.flashTime=time
-        self.flashColor = col
+    def bump(self, x,y,time):
+        self.bumpTime=time
+        self.bumpVec=(x,y)
     def toggleDrawFramerate(self, state):
         if (state):
             self.drawFramerate = not self.drawFramerate

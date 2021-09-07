@@ -229,7 +229,8 @@ class Player(Character):
                 force=self.totalForce.normalize()
                 if (self.dodgeVec.dot(force) < -.8):
                     self.state='rollBounce'
-                    g.Window.current.flashBk(.03,1)
+                    #g.Window.current.flashBk(1,.03)
+                    g.Window.current.bump(int(force.x*-1.5),int(force.y*-1.5),.05)
                     dustVec=Vector2(force.y,-force.x)
                     self.spawnDust(dustVec*2-force*.1, count=2)
                     self.spawnDust(-dustVec*2-force*.1, count=2)
