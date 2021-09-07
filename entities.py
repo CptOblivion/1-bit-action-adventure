@@ -281,6 +281,7 @@ class Player(Character):
     def spawnDust(self, vel, count=5, randStr=1):
         if not hasattr(self, 'dustSpriteSheet'):
             self.dustSpriteSheet=s.Sprite.loadSheet('Dust')
+        #randStr=0
         rx,ry,ra = (.2*randStr,.7*randStr,.15*randStr)
         cross=Vector2(vel.y, -vel.x)
         spriteSize=8
@@ -293,7 +294,8 @@ class Player(Character):
                                                              (spriteSize*2,0,spriteSize,spriteSize))),
                                      sheet=self.dustSpriteSheet),
                             .75+rand*ra*3, origin=(-4,-6))
-            dust.velocity=vel * (1-abs(rand)*ry) + cross*rand*rx
+            dust.velocity=(vel * (1-abs(rand)*ry) + cross*rand*rx) *g.deltaTime*150
+            #dust.velocity=(vel) *g.deltaTime*150
             dust.damping = 8
 
     def update(self):
