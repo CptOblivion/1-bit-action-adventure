@@ -98,7 +98,7 @@ class Actor(Entity):
 class Character(Actor):
     def __init__(self, name, room, collisionBounds, sprite, **kwargs):
         room=rm.Room.current
-        self.facing=Vector2(1,0)
+        self.facing=Vector2(0,1)
         self.totalForce = Vector2(0,0)
         reqStates=('idle_-1-1', 'idle_0-1', 'idle_1-1', 'idle_-10', 'idle_10', 'idle_-11', 'idle_01', 'idle_11',
                   'walk_-1-1', 'walk_0-1', 'walk_1-1', 'walk_-10', 'walk_10', 'walk_-11', 'walk_01', 'walk_11')
