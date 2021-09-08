@@ -1,0 +1,11 @@
+[Main]
+Image:CaveRoots.png
+Tileset:Tileset.png
+Tilesize:16
+[Floors]
+0:NormalFloor,6,0
+[Walls]
+255:NormalWall,6,0,32
+[Entities]
+[Doors]:
+l:-1,5,1,3,R,CaveHall,r

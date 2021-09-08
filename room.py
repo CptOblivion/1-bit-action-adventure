@@ -3,26 +3,26 @@ import pygame
 from pygame.math import Vector2
 import configparser
 import gameloop as g
-import event as e
-import entities
-import leveldoor
-#from Cest_Une_Sword_Prototype import Window
+import event as ev
+import entities as e
+#TODO: rename back to level.py, put Level class in here with Room
+#   (it'll probably be long but they're pretty tightly coupled)
 
-class LevelChangeEvent(e.Event):
+class RoomChangeEvent(ev.Event):
     #technically could just use InputEvent, but it's nice having a separate name to avoid confusion
-    def invoke(self, level):
+    def invoke(self, room):
         for subscriber in self.subscribers:
-            subscriber(level)
+            subscriber(room)
 
-class Level:
+class Room:
     current=None
     init=False
-    onLevelChange = LevelChangeEvent()
-    def __init__(self, levelFile):
-        self.onLevelChange = LevelChangeEvent()
-        self.onLevelLeave = LevelChangeEvent()
+    onRoomChange = RoomChangeEvent()
+    def __init__(self, roomFile):
+        self.onRoomChange = RoomChangeEvent()
+        self.onRoomLeave = RoomChangeEvent()
         self.config = configparser.ConfigParser()
-        self.config.read(os.path.join(os.getcwd(), 'Assets', 'Levels',levelFile+'.lvl'))
+        self.config.read(os.path.join(os.getcwd(), 'Assets', 'Levels',roomFile+'.lvl'))
         self.mapImage=pygame.image.load(os.path.join(os.getcwd(), 'Assets', 'Levels', self.config['Main']['Image']))
         self.tileset=pygame.image.load(os.path.join(os.getcwd(), 'Assets', 'Tilesets', self.config['Main']['Tileset']))
         self.width = self.mapImage.get_width()
@@ -54,12 +54,10 @@ class Level:
                                                             self.tileSize,self.tileSize), self.tileset)
         for iniIndex in self.config['Walls']:
             iniString=self.config['Walls'][iniIndex]
-            name,x,y,h = iniString.split(',')
-            x,y,h =(int(x), int(y), int(h))
-            pixel=self.tileset.get_at((int(x),int(y)))
-            #print(pixel)
+            name,x,y,height = iniString.split(',')
+            x,y,height =(int(x), int(y), int(height))
             self.wallTiles[iniIndex]=WallTile(name, pygame.Rect(x*self.tileSize,y*self.tileSize,
-                                                            self.tileSize,h), self.tileset, baseHeight=self.tileSize)
+                                                            self.tileSize,height), self.tileset, baseHeight=self.tileSize)
 
         for x in range(self.width):
             for y in range(self.height):
@@ -68,15 +66,23 @@ class Level:
                 if (pixel[1] > 0):
                     self.walls[x][y].setWall(self.wallTiles[str(pixel[1])])
 
+        for doorName in self.config['Doors']:
+            doorString=self.config['Doors'][doorName]
+            left,top,width,height,dir,linkedRoom,linkedDoor = doorString.split(',')
+            left,top,width,height=(int(left)*self.tileSize,int(top)*self.tileSize,int(width)*self.tileSize,int(height)*self.tileSize)
+            position = (left+width/2,top+height/2)
+            bounds=pygame.Rect(-width/2,-height/2,width, height)
+            if(dir=='l' or dir=='L'):
+                offs=(-1,0)
+            elif(dir=='r' or dir=='R'):
+                offs=(1,0)
+            elif(dir=='u' or dir=='U' or dir=='t' or dir=='T'):
+                offs=(0,-1)
+            elif(dir=='d' or dir=='D'or dir=='b' or dir=='B'):
+                offs=(0,1)
+            playerOffset=Vector2((bounds.width)*offs[0],(bounds.height)*offs[1])
 
-
-        for levelDoorName in self.config['Doors']:
-            doorString=self.config['Doors'][levelDoorName]
-            #print(doorString)
-            x,y,exitDir,linkedLevel,linkedDoor = doorString.split(',')
-            position = (int(x)*self.tileSize+self.tileSize/2,int(y)*self.tileSize+self.tileSize/2)
-            bounds=pygame.Rect(-self.tileSize/2,-self.tileSize/2,self.tileSize,self.tileSize)
-            levelDoor=leveldoor.LevelDoor(levelDoorName,self,position,bounds,None,exitDir,linkedLevel,linkedDoor)
+            roomDoor=Door(doorName,self,position,bounds,None,linkedRoom,linkedDoor,playerOffset)
 
     def updateTileCache(self):
         for x in range(self.width):
@@ -107,21 +113,23 @@ class Level:
             position[1] < 0 or position[1] >= self.height):
             return oobReturn #out of bounds return
         return self.walls[position[0]][position[1]]
-    def changedLevel(self):
+    def changedRoom(self):
         self.updateTileCache()
-        Level.onLevelChange.invoke(self)
-        self.onLevelChange.invoke(self)
-    def leavingLevel(self, newLevel):
-        self.onLevelLeave.invoke(newLevel)
+        Room.onRoomChange.invoke(self)
+        self.onRoomChange.invoke(self)
+    def leavingRoom(self, newRoom):
+        self.onRoomLeave.invoke(newRoom)
+
 class WallEntry:
-    def __init__(self, position, level):
-        self.level=level
+    #TODO: move to own file
+    def __init__(self, position, room):
+        self.room=room
         self.wall=None
         self.position=position
         self.corners=[[0,0],[0,0]]
         self.cached=False
-        self.rect = pygame.Rect(position[0]* level.tileSize, position[1]* level.tileSize,
-                                level.tileSize, level.tileSize)
+        self.rect = pygame.Rect(position[0]* room.tileSize, position[1]* room.tileSize,
+                                room.tileSize, room.tileSize)
     def updateWall(self):
         if (self.wall):
             doCache=True
@@ -129,11 +137,11 @@ class WallEntry:
             for x in range(-1,2,2):
                 for y in range(-1,2,2):
                     offsetIndex=0
-                    if (self.level.getWall((self.position[0]+x, self.position[1]),self).wall == self.wall):
+                    if (self.room.getWall((self.position[0]+x, self.position[1]),self).wall == self.wall):
                         offsetIndex += 4
-                    if (self.level.getWall((self.position[0], self.position[1]+y),self).wall == self.wall):
+                    if (self.room.getWall((self.position[0], self.position[1]+y),self).wall == self.wall):
                         offsetIndex += 2
-                    if (self.level.getWall((self.position[0]+x, self.position[1]+y),self).wall == self.wall):
+                    if (self.room.getWall((self.position[0]+x, self.position[1]+y),self).wall == self.wall):
                         offsetIndex += 1
                     self.corners[max(0,x)][max(0,y)] = offsetIndex
                     if (not offsetIndex in cacheList): doCache = False
@@ -147,7 +155,7 @@ class WallEntry:
         self.wall=wall
         for x in range(-1,2):
             for y in range(-1,2):
-                neighbor = self.level.getWall((self.position[0]+x,self.position[1]+y))
+                neighbor = self.room.getWall((self.position[0]+x,self.position[1]+y))
                 if (neighbor): neighbor.updateWall()
     def draw(self, cache=None):
         if (self.wall):
@@ -183,7 +191,7 @@ class WallEntry:
                 if (applyForce):
                     actor.position.x += force.x + actor.velocity.x * g.deltaTime
                     actor.velocity.x=0
-            actor.onCollide(entities.Actor.Collision(self, force,'wall'))
+            actor.onCollide(e.Actor.Collision(self, force,'wall'))
 
 class Tile:
     def __init__(self, name, rect, tileset): #XY tuple, surface, XY tuple
@@ -194,8 +202,8 @@ class Tile:
         self.tileset = tileset
     def draw(self, position, surface=None):
         if (not surface): surface=g.Window.current.screen
-        surface.blit(self.surf, (position[0]*Level.current.tileSize,
-                                               position[1]*Level.current.tileSize))
+        surface.blit(self.surf, (position[0]*Room.current.tileSize,
+                                               position[1]*Room.current.tileSize))
 class WallTile(Tile):
     offsets = (#HVD
         (0,1), #000, 0, outer corner
@@ -220,12 +228,12 @@ class WallTile(Tile):
                                      rect.width/2, self.baseHeight),
                          pygame.Rect(rect.left + rect.width/2, rect.top+self.baseHeight/2,
                                      rect.width/2, rect.height-self.baseHeight/2)))
-    def draw(self, levelPosition, corners, surface=None):
+    def draw(self, gridPosition, corners, surface=None):
         if (not surface):
             surface=g.Window.current.screen
-        tiles = Level.current.walls
-        finalPos = (levelPosition[0]*self.rect.width,
-                    levelPosition[1]*self.baseHeight - self.rect.height + self.baseHeight)
+        tiles = Room.current.walls
+        finalPos = (gridPosition[0]*self.rect.width,
+                    gridPosition[1]*self.baseHeight - self.rect.height + self.baseHeight)
         for x in range(2):
             for y in range(2):
                 offset = WallTile.offsets[corners[x][y]]
@@ -235,3 +243,35 @@ class WallTile(Tile):
                 cornerOffset = (x * self.rect.width/2 + finalPos[0],
                                 y * self.baseHeight/2 + finalPos[1])
                 surface.blit(self.tileset, cornerOffset, area=corner)
+
+class Door(e.Actor):
+    def __init__(self, name, room, position, collisionBounds, sprite,linkedRoom,linkedDoor,playerOffset):
+        super().__init__(name, room, collisionBounds,sprite,ghost=True, position=position)
+        #self.ghost=True
+        self.linkedRoom=linkedRoom
+        self.linkedDoor = linkedDoor
+        self.playerOffset=playerOffset
+        if (self.linkedRoom == 'None'):
+            self.linkedRoom = None
+            self.linkedDoor = None
+            self.setActive(False)
+        room.doors[self.name]=self
+    def playerStart(self):
+        self.collidingPlayerStart = True
+        e.Player.current.position=self.position + self.playerOffset
+        #TODO: get player position relative to self, place based on that
+        #   make sure to push player away from colliding with self, though
+    def onCollide(self, collision):
+        super().onCollide(collision)
+        if (collision.collider==e.Player.current): self.triggerLoad()
+    def triggerLoad(self):
+        g.GameLoop.changeRoom(self.linkedRoom, self.linkedDoor)
+    def update(self):
+        super().update()
+    def draw(self):
+        return
+        super().draw()
+        if (self.active):
+            tempBox=pygame.Surface((self.collisionBounds.width, self.collisionBounds.height))
+            tempBox.fill((0,0,255))
+            g.Window.current.screen.blit(tempBox,self.position+self.collisionBounds.topleft)

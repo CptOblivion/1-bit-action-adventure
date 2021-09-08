@@ -1,0 +1,12 @@
+[Main]
+Image:CaveHall.png
+Tileset:Tileset.png
+Tilesize:16
+[Floors]
+0:NormalFloor,6,0
+[Walls]
+255:NormalWall,6,0,32
+[Entities]
+[Doors]:
+b:5,15,2,1,U,Chapel,tl
+r:25,5,1,3,L,CaveRoots,l

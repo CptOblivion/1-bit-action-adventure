@@ -1,5 +1,5 @@
 [Main]
-Image:TestLevel1.png
+Image:Chapel.png
 Tileset:Tileset.png
 Tilesize:16
 [Floors]
@@ -10,7 +10,5 @@ Tilesize:16
 255:NormalWall,6,0,32
 [Entities]
 [Doors]:
-tl1:5,0,T,TestLevel2,b1
-tl2:6,0,T,TestLevel2,b2
-tr1:18,0,T,TestLevel3,b1
-tr2:19,0,T,TestLevel3,b2
+tl:5,-1,2,1,D,CaveHall,b
+tr:18,-1,2,1,D,StartRoom,b

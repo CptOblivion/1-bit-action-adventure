@@ -3,14 +3,16 @@ from pygame import locals
 import pygame
 from pygame.math import Vector2
 import datetime
-import level as lv
+import room as rm
 import entities as ent
 import event as ev
 
 deltaTime=100
 class GameLoop:
     lastTime=None
-    levels={}
+    rooms={}
+    #TODO: make Level class to wrap a bunch of rooms together
+    #gameloop can store  a list of levels, move this rooms dict into Level
     def __init__(game):
         GameLoop.current=game
         game.running = True
@@ -40,7 +42,7 @@ class GameLoop:
         
         game.window = Window()
         player=ent.Player()
-        GameLoop.changeLevel('TestLevel3', 'start')
+        GameLoop.changeRoom('StartRoom', 'start')
         GameLoop.lastTime = datetime.datetime.now()
         
     def updateDeltaTime():
@@ -49,44 +51,44 @@ class GameLoop:
         deltaTime=(time-GameLoop.lastTime).microseconds / 1000000
         GameLoop.lastTime=time
 
-    def loadLevel(levelName):
-        print('loading level ',levelName)
-        #TODO: learn about how to trigger garbage collection (and ensure the previous level is properly flushed)
-        GameLoop.levels[levelName] = lv.Level(levelName)
-    def changeLevel(levelName, doorName):
-        print('moving to level ', levelName, ' at door ', doorName)
-        if (not levelName in GameLoop.levels):
-            GameLoop.loadLevel(levelName)
-        newLevel=GameLoop.levels[levelName]
-        if (lv.Level.current):
-            lv.Level.current.leavingLevel(newLevel)
-        lv.Level.current=newLevel
-        ent.Player.current.setLevel(newLevel)
-        ent.Player.current.position=newLevel.doors[doorName].position
-        newLevel.changedLevel()
+    def loadRoom(roomName):
+        print('loading room ',roomName)
+        #TODO: learn about how to trigger garbage collection (and ensure the previous room is properly flushed)
+        GameLoop.rooms[roomName] = rm.Room(roomName)
+    def changeRoom(roomName, doorName):
+        #print('moving to room ', roomName, ' at door ', doorName)
+        if (not roomName in GameLoop.rooms):
+            GameLoop.loadRoom(roomName)
+        newRoom=GameLoop.rooms[roomName]
+        if (rm.Room.current):
+            rm.Room.current.leavingRoom(newRoom)
+        rm.Room.current=newRoom
+        ent.Player.current.setRoom(newRoom)
+        newRoom.doors[doorName].playerStart()
+        newRoom.changedRoom()
 
     def quit(game):
         print('quitting')
         game.running = False
     def update(game):
-        for entity in lv.Level.current.entities:
+        for entity in rm.Room.current.entities:
             if (entity.active):
                 entity.update()
     def physics(game):
         testActors = []
-        for actor in lv.Level.current.actors:
+        for actor in rm.Room.current.actors:
             if (actor.active):
                 if (actor.collideActors): testActors.append(actor)
-                cellIndex=actor.position//lv.Level.current.tileSize
-                remainder=actor.position - cellIndex * lv.Level.current.tileSize
-                remainder -= Vector2(lv.Level.current.tileSize/2,lv.Level.current.tileSize/2)
+                cellIndex=actor.position//rm.Room.current.tileSize
+                remainder=actor.position - cellIndex * rm.Room.current.tileSize
+                remainder -= Vector2(rm.Room.current.tileSize/2,rm.Room.current.tileSize/2)
                 if (remainder.x > 0):remainder.x=1
                 else: remainder.x=-1
                 if (remainder.y > 0): remainder.y=1
                 else: remainder.y=-1
                 for x in range(0,2):
                     for y in range(0,2):
-                        wall = lv.Level.current.getWall((int(cellIndex.x + remainder.x*x), int(cellIndex.y + remainder.y*y)))
+                        wall = rm.Room.current.getWall((int(cellIndex.x + remainder.x*x), int(cellIndex.y + remainder.y*y)))
                         if(wall and wall.wall): wall.collide(actor)
                 actor.afterPhysics()
         while len(testActors) > 1:
@@ -109,7 +111,7 @@ class GameLoop:
                         GameLoop.inputEvents[GameLoop.mapping[event.key]].invoke(False)
             game.update()
             game.physics()
-            lv.Level.current.draw()
+            rm.Room.current.draw()
 
 class Window:
     current = None

@@ -2,25 +2,25 @@ import os
 import pygame
 from pygame.math import Vector2
 import sprite as s
-import level as lv
+import room as rm
 import gameloop as g
 import random
 
 class Entity:
     #objects in scene
-    def __init__(self, name, level, sprite, position=(100,100), origin=(0,0)):
+    def __init__(self, name, room, sprite, position=(100,100), origin=(0,0)):
         self.name = name
         self.position=Vector2(position)
         if (type(sprite) == str):
             self.sprite=Sprite(sprite, s.Sprite.State(
-                (s.Sprite.Frame(pygame.Rect(0,0,level.tileSize,level.tileSize)),))) #this is a mess
+                (s.Sprite.Frame(pygame.Rect(0,0,room.tileSize,room.tileSize)),))) #this is a mess
         else:
             self.sprite=sprite
         self.active=True
         self.origin=Vector2(origin)
-        self.level = level
-        if (self.level):
-            self.level.entities.append(self)
+        self.room = room
+        if (self.room):
+            self.room.entities.append(self)
     def getCell(self, gridSize):
         #TODO: for optimization (get cell to cull collision tests, also to sort into rendering cells)
         pass
@@ -31,13 +31,13 @@ class Entity:
             self.sprite.draw(self.position+self.origin)
     def update(self):
         None
-    def setLevel(self, level):
-        if (self.level):
-            self.level.entities.remove(self)
-        self.level=level
-        level.entities.append(self)
+    def setRoom(self, room):
+        if (self.room):
+            self.room.entities.remove(self)
+        self.room=room
+        room.entities.append(self)
     def destroy(self):
-        self.level.entities.remove(self)
+        self.room.entities.remove(self)
         #TODO: add self to garbage cleanup array in GameLoop,
         #   which will run actualDestroy right before the next frame starts
     def actualDestroy(self):
@@ -51,21 +51,21 @@ class Actor(Entity):
             self.collidingObType=collidingObType
             self.force = force
     #has collision
-    def __init__(self, name, level, collisionBounds, sprite, ghost=False, **kwargs):
+    def __init__(self, name, room, collisionBounds, sprite, ghost=False, **kwargs):
         #TODO: add static tag (never check wall or floor collisions)
         #TODO: add onlyCollidePlayer tag (for performance, self explanatory)
         #TODO: add noCollideActors tag to only check walls for collision
 
-        super().__init__(name, level, sprite, **kwargs)
+        super().__init__(name, room, sprite, **kwargs)
         self.collisionBounds=collisionBounds
-        if (self.level): self.level.actors.append(self)
+        if (self.room): self.room.actors.append(self)
         self.ghost=ghost
         self.velocity = pygame.Vector2(0,0)
         self.collideActors=True
-    def setLevel(self, level):
-        if (self.level): self.level.actors.remove(self)
-        super().setLevel(level)
-        level.actors.append(self)
+    def setRoom(self, room):
+        if (self.room): self.room.actors.remove(self)
+        super().setRoom(room)
+        room.actors.append(self)
     def afterPhysics(self):
         if (self.active):
             self.move(self.velocity*g.deltaTime)
@@ -74,7 +74,7 @@ class Actor(Entity):
         self.position = newPos
     def destroy(self):
         super().destroy()
-        self.level.actors.remove(self)
+        self.room.actors.remove(self)
     def testCollision(self, actor):
         if (actor.active and 
             self.collisionBounds.move(self.position).colliderect(actor.collisionBounds.move(actor.position))):
@@ -96,8 +96,8 @@ class Actor(Entity):
         None
         
 class Character(Actor):
-    def __init__(self, name, level, collisionBounds, sprite, **kwargs):
-        level=lv.Level.current
+    def __init__(self, name, room, collisionBounds, sprite, **kwargs):
+        room=rm.Room.current
         self.facing=Vector2(1,0)
         self.totalForce = Vector2(0,0)
         reqStates=('idle_-1-1', 'idle_0-1', 'idle_1-1', 'idle_-10', 'idle_10', 'idle_-11', 'idle_01', 'idle_11',
@@ -105,7 +105,7 @@ class Character(Actor):
         for state in reqStates:
             if (not state in sprite.states):
                 raise AttributeError('required state ' + state + ' not in sprite!')
-        super().__init__(name, level, collisionBounds, sprite, **kwargs)
+        super().__init__(name, room, collisionBounds, sprite, **kwargs)
     def go(self, vec, faceMovement=True, overrideAnimation=False):
         self.velocity.x= vec.x
         self.velocity.y = vec.y
@@ -293,7 +293,7 @@ class Player(Character):
         spriteSize=8
         for i in range(count):
             rand=random.random()*2-1
-            dust=Particle('dust',self.level,
+            dust=Particle('dust',self.room,
                             pygame.Rect(-3,-1,6,2),
                             s.Sprite('Dust', s.Sprite.State(((0,0,spriteSize,spriteSize,.25+rand*ra),
                                                              (spriteSize,0,spriteSize,spriteSize),
@@ -331,13 +331,13 @@ class Player(Character):
         if (self.debugCollider): self.debugCollider=(0,255,0)
 
 class Particle(Actor):
-    def __init__(self, name, level, collisionBounds, sprite, life, **kwargs):
-        super().__init__(name, level, collisionBounds, sprite, **kwargs)
+    def __init__(self, name, room, collisionBounds, sprite, life, **kwargs):
+        super().__init__(name, room, collisionBounds, sprite, **kwargs)
         self.life=life
         self.damping = 0
         self.collideActors=False
-        #TODO: some sort of flag (in Entity, probably) to destroy on level change
-        #   maybe just subscribe to on level change (don't forget to unsubscribe on destroy)
+        #TODO: some sort of flag (in Entity, probably) to destroy on room change
+        #   maybe just subscribe to on room change (don't forget to unsubscribe on destroy)
     def update(self):
         super().update()
         self.velocity *= 1-self.damping*g.deltaTime
@@ -349,8 +349,8 @@ class Particle(Actor):
 class EffectTrigger(Actor):
     #TODO: make Trigger base class
     def quickAdd(name, position, effect, effectValues):
-        trigger = EffectTrigger(name, lv.Level.current,
-                                pygame.Rect(0, 0, lv.Level.tileSize, lv.Level.tileSize),
+        trigger = EffectTrigger(name, rm.Level.current,
+                                pygame.Rect(0, 0, rm.Level.tileSize, rm.Level.tileSize),
                                 None, position=position)
         trigger.effect=effect
         trigger.effectValues = effectValues
