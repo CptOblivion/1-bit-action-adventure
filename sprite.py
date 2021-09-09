@@ -7,9 +7,11 @@ class Sprite:
     def loadSheet(sheetName):
         return pygame.image.load(os.path.join(os.getcwd(), 'Assets','Sprites',sheetName+'.png'))
     class State:
+        #TODO: move state.currentFrame into Sprite, so we can reuse states between multiple sprite instances
+        #TODO: automatic caching of state instances in multiple copies of the same object
         def __init__(self, frames):
             self.frames=[]
-            if not (type(frames) == list or type(frames) == tuple):
+            if ((not (type(frames) == list or type(frames) == tuple)) or type(frames[0])==int):
                 frames=(frames,) #single frames can be passed, nest it in an empty tuple for simple processing
             for frame in frames:
                 if (type(frame) == Sprite.Frame):
@@ -51,19 +53,22 @@ class Sprite:
             self.sheet=Sprite.loadSheet(sheetName)
         self.animTimer=0
         self.nextFrameTime=0
+        self.states=states
+        for stateName in self.states:
+            self.states[stateName]=Sprite.initState(self.states[stateName])
         if (type(startState) == str and states):
-            self.states=states
             if (not startState in states):
                 raise IndexError('startState '+startState+' not in states!')
             self.currentState = states[startState]
-        elif (type(startState) == Sprite.State):
-            self.states=states
-            self.states['start'] = startState
-            self.currentState=startState
         else:
-            raise TypeError('states not defined! startState: ' + type(startState) + ', states: ' + type(states))
+            self.states['start'] = self.currentState = Sprite.initState(startState)
         
         self.currentSprite=self.currentState.activate().rect
+
+    def initState(state):
+        if (type(state)==list or type(state)==tuple):
+            return Sprite.State(state)
+        return state
     def draw(self, position):
         if (len(self.currentState.frames)>1):
             self.animTimer+=g.deltaTime

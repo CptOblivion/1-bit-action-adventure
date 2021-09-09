@@ -181,14 +181,14 @@ class WallEntry:
             if (abs(force.x) > abs(force.y)):
                 #normal is along the y axis
                 force.x=0
-                if (applyForce):
+                if (applyForce and not actor.ghost):
                     #TODO: there's gotta be a way to simplify this down
                     actor.position.y += force.y + actor.velocity.y * g.deltaTime
                     actor.velocity.y=0
             else:
                 #normal is along the x axis
                 force.y=0
-                if (applyForce):
+                if (applyForce and not actor.ghost):
                     actor.position.x += force.x + actor.velocity.x * g.deltaTime
                     actor.velocity.x=0
             actor.onCollide(e.Actor.Collision(self, force,'wall'))

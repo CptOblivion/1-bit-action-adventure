@@ -31,7 +31,8 @@ class GameLoop:
             pygame.locals.K_LEFT:'moveLeft',
             pygame.locals.K_d:'moveRight',
             pygame.locals.K_RIGHT:'moveRight',
-            pygame.locals.K_SPACE:'dodge',
+            pygame.locals.K_LSHIFT:'dodge',
+            pygame.locals.K_SPACE:'attack',
             pygame.locals.K_f:'debugDisplay',
             pygame.locals.K_c:'debugChart'}
         GameLoop.inputEvents={}
@@ -77,8 +78,8 @@ class GameLoop:
     def physics(game):
         testActors = []
         for actor in rm.Room.current.actors:
-            if (actor.active):
-                if (actor.collideActors): testActors.append(actor)
+            if (actor.active and not actor.noCollide):
+                if (not actor.noCollideActors): testActors.append(actor)
                 cellIndex=actor.position//rm.Room.current.tileSize
                 remainder=actor.position - cellIndex * rm.Room.current.tileSize
                 remainder -= Vector2(rm.Room.current.tileSize/2,rm.Room.current.tileSize/2)

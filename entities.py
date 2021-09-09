@@ -8,12 +8,13 @@ import random
 
 class Entity:
     #objects in scene
-    def __init__(self, name, room, sprite, position=(100,100), origin=(0,0)):
+    def __init__(self, name, room, sprite, position=(100,100), origin=(0,0), parent=None):
         self.name = name
         self.position=Vector2(position)
         if (type(sprite) == str):
-            self.sprite=Sprite(sprite, s.Sprite.State(
-                (s.Sprite.Frame(pygame.Rect(0,0,room.tileSize,room.tileSize)),))) #this is a mess
+            self.sprite=s.Sprite(sprite, (0,0,room.tileSize,room.tileSize))
+        elif (type(sprite) == tuple or type(sprite)==list):
+            self.sprite=s.Sprite(sprite[0],sprite[1])
         else:
             self.sprite=sprite
         self.active=True
@@ -21,6 +22,10 @@ class Entity:
         self.room = room
         if (self.room):
             self.room.entities.append(self)
+        self.children=[]
+        self.parent=None
+        if (parent):
+            self.setParent(parent)
     def getCell(self, gridSize):
         #TODO: for optimization (get cell to cull collision tests, also to sort into rendering cells)
         pass
@@ -36,14 +41,37 @@ class Entity:
             self.room.entities.remove(self)
         self.room=room
         room.entities.append(self)
+        for child in self.children:
+            child.setRoom(room)
     def destroy(self):
         self.room.entities.remove(self)
+        if (self.parent): self.parent.remove(self)
+        for child in self.children:
+            child.destroy()
         #TODO: add self to garbage cleanup array in GameLoop,
         #   which will run actualDestroy right before the next frame starts
     def actualDestroy(self):
         del self
+    def setParent(self, parent):
+        if (self.parent):
+            self.parent.children.remove(self)
+        parent.children.append(self)
+        self.parent=parent
+        #print('changed ', self.name, "'s parent to ", self.parent, '. New siblings (plus self): ', self.parent.children)
 
 class Actor(Entity):
+    collisionLayerNames={'default':1,'monsters':2,'player':3,'breakables':4,
+                         'monsterAttack':5,'playerAttack':6,'hitStun':7,'unused':8}
+    #reminder: the bits are in right-to-left order 
+    collisionMask=[0,
+                   0b01001111, #default
+                   0b00101101, #monsters
+                   0b00011111, #player
+                   0b00111111, #breakables
+                   0b00001100, #monsterAttack
+                   0b00001010, #playerAttack
+                   0b00000001, #hitstun
+                   0b00000000] #unused
     class Collision:
         def __init__(self, collider, force, collidingObType):
             #collidingObTypes:'floor', 'wall', 'actor'
@@ -52,6 +80,7 @@ class Actor(Entity):
             self.force = force
     #has collision
     def __init__(self, name, room, collisionBounds, sprite, ghost=False, **kwargs):
+        self.collisionLayer=1
         #TODO: add static tag (never check wall or floor collisions)
         #TODO: add onlyCollidePlayer tag (for performance, self explanatory)
         #TODO: add noCollideActors tag to only check walls for collision
@@ -59,9 +88,21 @@ class Actor(Entity):
         super().__init__(name, room, sprite, **kwargs)
         self.collisionBounds=collisionBounds
         if (self.room): self.room.actors.append(self)
-        self.ghost=ghost
+        self.ghost=ghost #registers collisions, but doesn't receive physics
+        self.skipDamage=True
+        self.noCollideActors=False #skips collision tests with other actors
+        self.noCollide=False #skips collision entirely
         self.velocity = pygame.Vector2(0,0)
-        self.collideActors=True
+        self.health=1
+    def setCollisionLayer(self,layer):
+        if (type(layer)==int): self.collisionLayer=layer
+        else: self.collisionLayer = Actor.collisionLayerNames[layer]
+    def takeDamage(self, damage, fromActor):
+        if (not self.skipDamage):
+            self.health -= damage
+            if self.health <= 0: self.onDeath()
+    def onDeath(self):
+        pass
     def setRoom(self, room):
         if (self.room): self.room.actors.remove(self)
         super().setRoom(room)
@@ -76,7 +117,8 @@ class Actor(Entity):
         super().destroy()
         self.room.actors.remove(self)
     def testCollision(self, actor):
-        if (actor.active and 
+        collisionMask=(Actor.collisionMask[actor.collisionLayer] >> (self.collisionLayer -1)) & 1
+        if (actor.active and (not actor.noCollide) and collisionMask and (not actor.noCollideActors) and 
             self.collisionBounds.move(self.position).colliderect(actor.collisionBounds.move(actor.position))):
             force=Vector2(0,0)
             if (self.ghost == actor.ghost == False):
@@ -126,7 +168,6 @@ class Character(Actor):
         return '_'+str(facing[0])+str(facing[1])
 
 class Player(Character):
-    #from GameLoops import GameLoop
     #controlled by player
     current=None
     def __init__(self, **kwargs):
@@ -142,63 +183,63 @@ class Player(Character):
         xIdle, xWalk1, xWalk2, xDodge = (0,w,w*2, w*3)
         ul, u, ur, l, r, dl, d, dr = (h*5,h*6,h*7,h*4,0,h*3,h*2,h)
         #TODO: in Character, make a function to generate this grid of values
-        animDict={'idle_-1-1':s.Sprite.State(((xIdle,ul,w,h,tIdle),)),
-                  'idle_0-1':s.Sprite.State(((xIdle,u,w,h,tIdle),)),
-                  'idle_1-1':s.Sprite.State(((xIdle,ur,w,h,tIdle),)),
-                  'idle_-10':s.Sprite.State(((xIdle,l,w,h,tIdle),)),
-                  'idle_10':s.Sprite.State(((xIdle,r,w,h,tIdle),)),
-                  'idle_-11':s.Sprite.State(((xIdle,dl,w,h,tIdle),)),
-                  'idle_01':s.Sprite.State(((xIdle,d,w,h,tIdle),)),
-                  'idle_11':s.Sprite.State(((xIdle,dr,w,h,tIdle),)),
-                  'walk_-1-1':s.Sprite.State((
+        animDict={'idle_-1-1':(xIdle,ul,w,h,tIdle),
+                  'idle_0-1':(xIdle,u,w,h,tIdle),
+                  'idle_1-1':(xIdle,ur,w,h,tIdle),
+                  'idle_-10':(xIdle,l,w,h,tIdle),
+                  'idle_10':(xIdle,r,w,h,tIdle),
+                  'idle_-11':(xIdle,dl,w,h,tIdle),
+                  'idle_01':(xIdle,d,w,h,tIdle),
+                  'idle_11':(xIdle,dr,w,h,tIdle),
+                  'walk_-1-1':(
                       (xWalk1,ul,w,h,tWalk),
                       (xIdle,ul,w,h),
                       (xWalk2,ul,w,h),
-                      (xIdle,ul,w,h))),
-                  'walk_0-1':s.Sprite.State((
+                      (xIdle,ul,w,h)),
+                  'walk_0-1':(
                       (xWalk1,u,w,h,tWalk),
                       (xIdle,u,w,h),
                       (xWalk2,u,w,h),
-                      (xIdle,u,w,h))),
-                  'walk_1-1':s.Sprite.State((
+                      (xIdle,u,w,h)),
+                  'walk_1-1':(
                       (xWalk1,ur,w,h,tWalk),
                       (xIdle,ur,w,h),
                       (xWalk2,ur,w,h),
-                      (xIdle,ur,w,h))),
-                  'walk_-10':s.Sprite.State((
+                      (xIdle,ur,w,h)),
+                  'walk_-10':(
                       (xWalk1,l,w,h,tWalk),
                       (xIdle,l,w,h),
                       (xWalk2,l,w,h),
-                      (xIdle,l,w,h))),
-                  'walk_10':s.Sprite.State((
+                      (xIdle,l,w,h)),
+                  'walk_10':(
                       (xWalk1,r,w,h,tWalk),
                       (xIdle,r,w,h),
                       (xWalk2,r,w,h),
-                      (xIdle,r,w,h),)),
-                  'walk_-11':s.Sprite.State((
+                      (xIdle,r,w,h)),
+                  'walk_-11':(
                       (xWalk1,dl,w,h,tWalk),
                       (xIdle,dl,w,h),
                       (xWalk2,dl,w,h),
-                      (xIdle,dl,w,h))),
-                  'walk_01':s.Sprite.State((
+                      (xIdle,dl,w,h)),
+                  'walk_01':((
                       (xWalk1,d,w,h,tWalk),
                       (xIdle,d,w,h),
                       (xWalk2,d,w,h),
                       (xIdle,d,w,h))),
-                  'walk_11':s.Sprite.State((
+                  'walk_11':(
                       (xWalk1,dr,w,h,tWalk),
                       (xIdle,dr,w,h),
                       (xWalk2,dr,w,h),
-                      (xIdle,dr,w,h))),
-                  'dodge_-1-1':s.Sprite.State(((xDodge,ul,w,h,tDodge),)),
-                  'dodge_0-1':s.Sprite.State(((xDodge,u,w,h,tDodge),)),
-                  'dodge_1-1':s.Sprite.State(((xDodge,ur,w,h,tDodge),)),
-                  'dodge_-10':s.Sprite.State(((xDodge,l,w,h,tDodge),)),
-                  'dodge_10':s.Sprite.State(((xDodge,r,w,h,tDodge),)),
-                  'dodge_-11':s.Sprite.State(((xDodge,dl,w,h,tDodge),)),
-                  'dodge_01':s.Sprite.State(((xDodge,d,w,h,tDodge),)),
-                  'dodge_11':s.Sprite.State(((xDodge,dr,w,h,tDodge),)),
-                  'dodge':s.Sprite.State(((xDodge,l,w,h,100),))}
+                      (xIdle,dr,w,h)),
+                  'dodge_-1-1':(xDodge,ul,w,h,tDodge),
+                  'dodge_0-1':(xDodge,u,w,h,tDodge),
+                  'dodge_1-1':(xDodge,ur,w,h,tDodge),
+                  'dodge_-10':(xDodge,l,w,h,tDodge),
+                  'dodge_10':(xDodge,r,w,h,tDodge),
+                  'dodge_-11':(xDodge,dl,w,h,tDodge),
+                  'dodge_01':(xDodge,d,w,h,tDodge),
+                  'dodge_11':(xDodge,dr,w,h,tDodge),
+                  'dodge':(xDodge,l,w,h,100)}
         super().__init__('player', None, collisionBounds,
                        s.Sprite(sheetName, 'idle_10', states = animDict, sheet=playerSheet),origin=(-8,-15),**kwargs)
         self.walkSpeed = 100
@@ -211,13 +252,19 @@ class Player(Character):
         self.rollBounceSpeed = 200 #start speed for roll bounce
         self.rollBounceFalloff = 25
         self.moveInputVec = Vector2(0,0)
-        g.GameLoop.inputEvents['moveUp'].add(self.moveUp)
-        g.GameLoop.inputEvents['moveDown'].add(self.moveDown)
-        g.GameLoop.inputEvents['moveLeft'].add(self.moveLeft)
-        g.GameLoop.inputEvents['moveRight'].add(self.moveRight)
+        g.GameLoop.inputEvents['moveUp'].add(self.inputMoveUp)
+        g.GameLoop.inputEvents['moveDown'].add(self.inputMoveDown)
+        g.GameLoop.inputEvents['moveLeft'].add(self.inputMoveLeft)
+        g.GameLoop.inputEvents['moveRight'].add(self.inputMoveRight)
         g.GameLoop.inputEvents['dodge'].add(self.dodge)
+        g.GameLoop.inputEvents['attack'].add(self.inputAttack)
+        self.setCollisionLayer('player')
         self.debugCollider=None
-
+        bounds=pygame.Rect(-16,-8,32,16)
+        center=(-16,-8)
+        sprite=('Sword Slash', (0,0,32,16,100))
+        self.attackOb=DamageBox('playerAttack',self.room,bounds,sprite,1,.05,.05,.5,collisionLayer='playerAttack',
+                              ghost=True, parent=self, origin=center)
         #self.debugCollider = (0,255,0)
     def draw(self):
         Character.draw(self)
@@ -250,26 +297,33 @@ class Player(Character):
             self.debugCollider = (255,0,0)
     def move(self, vect, faceMovement=True, overrideAnimation=False):
         Character.move(self, vect)
-    def moveUp(self, state):
+    def inputMoveUp(self, state):
         if (state):
             self.moveInputVec += Vector2(0,-1)
         else:
             self.moveInputVec -= Vector2(0,-1)
-    def moveDown(self, state):
+    def inputMoveDown(self, state):
         if (state):
             self.moveInputVec += Vector2(0,1)
         else:
             self.moveInputVec -= Vector2(0,1)
-    def moveLeft(self, state):
+    def inputMoveLeft(self, state):
         if (state):
             self.moveInputVec += Vector2(-1,0)
         else:
             self.moveInputVec -= Vector2(-1,0)
-    def moveRight(self, state):
+    def inputMoveRight(self, state):
         if (state):
             self.moveInputVec += Vector2(1,0)
         else:
             self.moveInputVec -= Vector2(1,0)
+    def inputAttack(self, state):
+        if state:
+            if (self.state=='normal' and not self.attackOb.active):
+                rotation=0 #TODO: get rotation from facing
+                #TODO: offset position by facing
+                pos = self.position + self.facing*16 + Vector2(0,-8)
+                self.attackOb.attack(pos, rotation)
     def dodge(self, state):
         if (state):
             if (self.state=='normal'):
@@ -295,9 +349,9 @@ class Player(Character):
             rand=random.random()*2-1
             dust=Particle('dust',self.room,
                             pygame.Rect(-3,-1,6,2),
-                            s.Sprite('Dust', s.Sprite.State(((0,0,spriteSize,spriteSize,.25+rand*ra),
-                                                             (spriteSize,0,spriteSize,spriteSize),
-                                                             (spriteSize*2,0,spriteSize,spriteSize))),
+                            s.Sprite('Dust', ((0,0,spriteSize,spriteSize,.25+rand*ra),
+                                              (spriteSize,0,spriteSize,spriteSize),
+                                              (spriteSize*2,0,spriteSize,spriteSize)),
                                      sheet=self.dustSpriteSheet),
                             .75+rand*ra*3, position=self.position, origin=(-4,-6))
             dust.velocity=vel * (1-abs(rand)*ry) + cross*rand*rx
@@ -329,13 +383,64 @@ class Player(Character):
                 
         self.totalForce=Vector2()
         if (self.debugCollider): self.debugCollider=(0,255,0)
+class DamageBox(Actor):
+    def __init__(self, name, room, collisionBounds, sprite, damage,
+                 windupTime,damageTime,remainTime, collisionLayer='monsterAttack', **kwargs):
+        super().__init__(name, room, collisionBounds,sprite, **kwargs)
+        print('damage box added, but not yet implemented')
+        self.ghost=True
+        self.setActive(False)
+        self.skipDamage=True
+        self.damage=damage
+        self.setCollisionLayer(collisionLayer)
+        self.windupTime=windupTime
+        self.damageTime=damageTime
+        self.remainTime=remainTime
+        self.state='notYetActivated'
+        #TODO: collision mask
+    def attack(self, position, rotation):
+        self.setActive(True)
+        self.position=position
+        self.rotation=rotation #one of eight directions, clockwise from north
+        self.sprite.animTimer=0
+        if (self.windupTime):
+            self.timer=self.windupTime
+            self.noCollide=True
+            self.state='windup'
+        else:
+            self.tier=self.damageTime
+            self.noCollide=False
+            self.state='damage'
+
+        #we'll draw rotated, but collision uses orthogonal squares
+    def update(self):
+        super().update()
+        self.timer -= g.deltaTime
+        if (self.timer <= 0):
+            if (self.state=='windup'):
+                self.noCollide=False
+                self.timer = self.damageTime
+                self.state='damage'
+            elif (self.state=='damage'):
+                self.noCollide=True
+                self.timer=self.remainTime
+                self.state='remain'
+            else:
+                self.setActive(False)
+    def draw(self):
+        super().draw()
+        #TODO: sprite rotation
+    def onCollide(self, collision):
+        super().onCollide(collision)
+        col=collision.collider
+        print('hit ', col)
 
 class Particle(Actor):
     def __init__(self, name, room, collisionBounds, sprite, life, **kwargs):
         super().__init__(name, room, collisionBounds, sprite, **kwargs)
         self.life=life
         self.damping = 0
-        self.collideActors=False
+        self.noCollideActors=False
         #TODO: some sort of flag (in Entity, probably) to destroy on room change
         #   maybe just subscribe to on room change (don't forget to unsubscribe on destroy)
     def update(self):
