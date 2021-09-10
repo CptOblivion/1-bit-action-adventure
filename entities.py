@@ -332,7 +332,7 @@ class Player(Character):
     def inputAttack(self, state):
         if state:
             if (self.state=='normal' and not self.attackOb.active):
-                pos = self.position + self.facing*8 + Vector2(0,-8)
+                pos = self.position + self.facing.normalize()*8 + Vector2(0,-8)
                 self.attackOb.attack(pos, self.facing)
     def dodge(self, state):
         if (state):
@@ -392,6 +392,8 @@ class Player(Character):
                 self.state='normal'
                 
         self.totalForce=Vector2()
+
+        #TODO: move hitbox debug drawing to Actor
         if (self.debugCollider): self.debugCollider=(0,255,0)
 class DamageBox(Actor):
     def __init__(self, name, room, collisionBounds, sprite, damage,
@@ -446,10 +448,10 @@ class DamageBox(Actor):
             else:
                 self.setActive(False)
     def draw(self):
-        #
+        #TODO: only need to do fill, blit, rotate when sprite image updates (IE on state or frame change)
         self.surface.fill((255,255,255,0))
         self.surface.blit(self.sprite.sheet, (0,0), area=self.sprite.currentSprite)
-        #super().draw(target=self.surface)
+        #TODO: build rotation library on sprite creation?
         g.Window.current.screen.blit(pygame.transform.rotate(self.surface, self.rotation),
                                      self.position+self.origin)
         #g.Window.current.screen.blit(self.surface,self.position+self.origin)
