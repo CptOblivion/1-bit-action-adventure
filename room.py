@@ -120,6 +120,38 @@ class Room:
     def leavingRoom(self, newRoom):
         self.onRoomLeave.invoke(newRoom)
 
+class Door(e.Actor):
+    def __init__(self, name, room, position, collisionBounds, sprite,linkedRoom,linkedDoor,playerOffset):
+        super().__init__(name, room, collisionBounds,sprite,ghost=True, position=position)
+        #self.ghost=True
+        self.linkedRoom=linkedRoom
+        self.linkedDoor = linkedDoor
+        self.playerOffset=playerOffset
+        if (self.linkedRoom == 'None'):
+            self.linkedRoom = None
+            self.linkedDoor = None
+            self.setActive(False)
+        room.doors[self.name]=self
+    def playerStart(self):
+        self.collidingPlayerStart = True
+        e.Player.current.position=self.position + self.playerOffset
+        #TODO: get player position relative to self, place based on that
+        #   make sure to push player away from colliding with self, though
+    def onCollide(self, collision):
+        super().onCollide(collision)
+        if (collision.collider==e.Player.current): self.triggerLoad()
+    def triggerLoad(self):
+        g.GameLoop.changeRoom(self.linkedRoom, self.linkedDoor)
+    def update(self):
+        super().update()
+    def draw(self):
+        return
+        super().draw()
+        if (self.active):
+            tempBox=pygame.Surface((self.collisionBounds.width, self.collisionBounds.height))
+            tempBox.fill((0,0,255))
+            g.Window.current.screen.blit(tempBox,self.position+self.collisionBounds.topleft)
+
 class WallEntry:
     #TODO: move to own file
     def __init__(self, position, room):
@@ -146,7 +178,6 @@ class WallEntry:
                     self.corners[max(0,x)][max(0,y)] = offsetIndex
                     if (not offsetIndex in cacheList): doCache = False
             self.cached=doCache
-            #self.cached=self.corners==[[7,7],[7,7]]
             #don't forget to redraw cache after updating
             #maybe can get away with just drawing this tile and every one below it in the same column
             #maybe also just mark the tile's height in an array of all the columns (unless a higher tile is already marked)
@@ -244,34 +275,3 @@ class WallTile(Tile):
                                 y * self.baseHeight/2 + finalPos[1])
                 surface.blit(self.tileset, cornerOffset, area=corner)
 
-class Door(e.Actor):
-    def __init__(self, name, room, position, collisionBounds, sprite,linkedRoom,linkedDoor,playerOffset):
-        super().__init__(name, room, collisionBounds,sprite,ghost=True, position=position)
-        #self.ghost=True
-        self.linkedRoom=linkedRoom
-        self.linkedDoor = linkedDoor
-        self.playerOffset=playerOffset
-        if (self.linkedRoom == 'None'):
-            self.linkedRoom = None
-            self.linkedDoor = None
-            self.setActive(False)
-        room.doors[self.name]=self
-    def playerStart(self):
-        self.collidingPlayerStart = True
-        e.Player.current.position=self.position + self.playerOffset
-        #TODO: get player position relative to self, place based on that
-        #   make sure to push player away from colliding with self, though
-    def onCollide(self, collision):
-        super().onCollide(collision)
-        if (collision.collider==e.Player.current): self.triggerLoad()
-    def triggerLoad(self):
-        g.GameLoop.changeRoom(self.linkedRoom, self.linkedDoor)
-    def update(self):
-        super().update()
-    def draw(self):
-        return
-        super().draw()
-        if (self.active):
-            tempBox=pygame.Surface((self.collisionBounds.width, self.collisionBounds.height))
-            tempBox.fill((0,0,255))
-            g.Window.current.screen.blit(tempBox,self.position+self.collisionBounds.topleft)

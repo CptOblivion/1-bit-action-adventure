@@ -168,7 +168,7 @@ class Character(Actor):
             if (vec.magnitude() == 0): anim='idle'
             else: anim='walk'
             anim += self.getSpriteDirection()
-            self.sprite.changeState(anim)
+            self.sprite.setState(anim)
     def getSpriteDirection(self):
         facing=[0,0]
         if (self.facing.x > 0): facing[0] = 1
@@ -176,6 +176,25 @@ class Character(Actor):
         if (self.facing.y > 0): facing[1] = 1
         elif (self.facing.y < 0): facing[1] = -1
         return '_'+str(facing[0])+str(facing[1])
+    def generateFacingSprites(baseName,columns,w,h,t):
+        if (type(columns)==int):
+            columns=(columns,)
+        outDict={}
+        suffixes=('10','11','01','-11','-10','-1-1','0-1','1-1')
+        for i in range(8):
+            line=[]
+            for col in columns:
+                line.append((col*w,h*i,w,h,t))
+            outDict[baseName+'_'+suffixes[i]]=tuple(line)
+        return outDict
+        #return {baseName+'_-1-1':(column,h*5,w,h,t),
+        #        baseName+'_0-1':(column,h*6,w,h,t),
+        #        baseName+'_1-1':(column,h*7,w,h,t),
+        #        baseName+'_-10':(column,h*4,w,h,t),
+        #        baseName+'_10':(column,0,w,h,t),
+        #        baseName+'_-11':(column,h*3,w,h,t),
+        #        baseName+'_01':(column,h*2,w,h,t),
+        #        baseName+'_11':(column,h,w,h,t)}
 
 class Player(Character):
     #controlled by player
@@ -189,67 +208,62 @@ class Player(Character):
         playerSheet=pygame.image.load(os.path.join(os.getcwd(), 'Assets','Sprites',sheetName+'.png'))
         w=16
         h=16
-        tIdle, tWalk,tDodge=(.25,.08,10)
-        xIdle, xWalk1, xWalk2, xDodge = (0,w,w*2, w*3)
-        ul, u, ur, l, r, dl, d, dr = (h*5,h*6,h*7,h*4,0,h*3,h*2,h)
         #TODO: in Character, make a function to generate this grid of values
-        animDict={'idle_-1-1':(xIdle,ul,w,h,tIdle),
-                  'idle_0-1':(xIdle,u,w,h,tIdle),
-                  'idle_1-1':(xIdle,ur,w,h,tIdle),
-                  'idle_-10':(xIdle,l,w,h,tIdle),
-                  'idle_10':(xIdle,r,w,h,tIdle),
-                  'idle_-11':(xIdle,dl,w,h,tIdle),
-                  'idle_01':(xIdle,d,w,h,tIdle),
-                  'idle_11':(xIdle,dr,w,h,tIdle),
-                  'walk_-1-1':(
-                      (xWalk1,ul,w,h,tWalk),
-                      (xIdle,ul,w,h),
-                      (xWalk2,ul,w,h),
-                      (xIdle,ul,w,h)),
-                  'walk_0-1':(
-                      (xWalk1,u,w,h,tWalk),
-                      (xIdle,u,w,h),
-                      (xWalk2,u,w,h),
-                      (xIdle,u,w,h)),
-                  'walk_1-1':(
-                      (xWalk1,ur,w,h,tWalk),
-                      (xIdle,ur,w,h),
-                      (xWalk2,ur,w,h),
-                      (xIdle,ur,w,h)),
-                  'walk_-10':(
-                      (xWalk1,l,w,h,tWalk),
-                      (xIdle,l,w,h),
-                      (xWalk2,l,w,h),
-                      (xIdle,l,w,h)),
-                  'walk_10':(
-                      (xWalk1,r,w,h,tWalk),
-                      (xIdle,r,w,h),
-                      (xWalk2,r,w,h),
-                      (xIdle,r,w,h)),
-                  'walk_-11':(
-                      (xWalk1,dl,w,h,tWalk),
-                      (xIdle,dl,w,h),
-                      (xWalk2,dl,w,h),
-                      (xIdle,dl,w,h)),
-                  'walk_01':((
-                      (xWalk1,d,w,h,tWalk),
-                      (xIdle,d,w,h),
-                      (xWalk2,d,w,h),
-                      (xIdle,d,w,h))),
-                  'walk_11':(
-                      (xWalk1,dr,w,h,tWalk),
-                      (xIdle,dr,w,h),
-                      (xWalk2,dr,w,h),
-                      (xIdle,dr,w,h)),
-                  'dodge_-1-1':(xDodge,ul,w,h,tDodge),
-                  'dodge_0-1':(xDodge,u,w,h,tDodge),
-                  'dodge_1-1':(xDodge,ur,w,h,tDodge),
-                  'dodge_-10':(xDodge,l,w,h,tDodge),
-                  'dodge_10':(xDodge,r,w,h,tDodge),
-                  'dodge_-11':(xDodge,dl,w,h,tDodge),
-                  'dodge_01':(xDodge,d,w,h,tDodge),
-                  'dodge_11':(xDodge,dr,w,h,tDodge),
-                  'dodge':(xDodge,l,w,h,100)}
+        animDict = {**Character.generateFacingSprites('idle', 0, w,h,.25),
+                    **Character.generateFacingSprites('walk',(1,0,2,0),w,h,.08),
+                    **Character.generateFacingSprites('dodge',3,w,h,2),
+                    **Character.generateFacingSprites('attack',4,w,h,2)
+                    }
+        #animDict={
+        #          'walk_-1-1':(
+        #              (xWalk1,ul,w,h,tWalk),
+        #              (xIdle,ul,w,h),
+        #              (xWalk2,ul,w,h),
+        #              (xIdle,ul,w,h)),
+        #          'walk_0-1':(
+        #              (xWalk1,u,w,h,tWalk),
+        #              (xIdle,u,w,h),
+        #              (xWalk2,u,w,h),
+        #              (xIdle,u,w,h)),
+        #          'walk_1-1':(
+        #              (xWalk1,ur,w,h,tWalk),
+        #              (xIdle,ur,w,h),
+        #              (xWalk2,ur,w,h),
+        #              (xIdle,ur,w,h)),
+        #          'walk_-10':(
+        #              (xWalk1,l,w,h,tWalk),
+        #              (xIdle,l,w,h),
+        #              (xWalk2,l,w,h),
+        #              (xIdle,l,w,h)),
+        #          'walk_10':(
+        #              (xWalk1,r,w,h,tWalk),
+        #              (xIdle,r,w,h),
+        #              (xWalk2,r,w,h),
+        #              (xIdle,r,w,h)),
+        #          'walk_-11':(
+        #              (xWalk1,dl,w,h,tWalk),
+        #              (xIdle,dl,w,h),
+        #              (xWalk2,dl,w,h),
+        #              (xIdle,dl,w,h)),
+        #          'walk_01':((
+        #              (xWalk1,d,w,h,tWalk),
+        #              (xIdle,d,w,h),
+        #              (xWalk2,d,w,h),
+        #              (xIdle,d,w,h))),
+        #          'walk_11':(
+        #              (xWalk1,dr,w,h,tWalk),
+        #              (xIdle,dr,w,h),
+        #              (xWalk2,dr,w,h),
+        #              (xIdle,dr,w,h)),
+        #          'dodge_-1-1':(xDodge,ul,w,h,tDodge),
+        #          'dodge_0-1':(xDodge,u,w,h,tDodge),
+        #          'dodge_1-1':(xDodge,ur,w,h,tDodge),
+        #          'dodge_-10':(xDodge,l,w,h,tDodge),
+        #          'dodge_10':(xDodge,r,w,h,tDodge),
+        #          'dodge_-11':(xDodge,dl,w,h,tDodge),
+        #          'dodge_01':(xDodge,d,w,h,tDodge),
+        #          'dodge_11':(xDodge,dr,w,h,tDodge),
+        #          'dodge':(xDodge,l,w,h,100)}
         super().__init__('player', None, collisionBounds,
                        s.Sprite(sheetName, 'idle_10', states = animDict, sheet=playerSheet),origin=(-8,-15),**kwargs)
         self.walkSpeed = 100
@@ -273,8 +287,12 @@ class Player(Character):
         bounds=pygame.Rect(-8,-8,16,16)
         center=(-8,-8)
         self.attackOb=DamageBox('playerAttack',self.room,bounds,
-                                s.Sprite('Sword Slash2', 'ortho',states={'ortho':(0,0,16,16,100),
-                                                                         'diag':(0,16,16,16,100)}),
+                                s.Sprite('Sword Slash2', 'ortho',states={'ortho':((0,0,16,16,.03),
+                                                                                  (16,0,16,16,.02),
+                                                                                  (32,0,16,16,100)),
+                                                                         'diag':((0,16,16,16,.03),
+                                                                                  (16,16,16,16,.02),
+                                                                                  (32,16,16,16,100))}),
                                 1,.03,.02,.25,collisionLayer='playerAttack',
                               ghost=True, parent=self, origin=center)
         #self.debugCollider = (0,255,0)
@@ -304,7 +322,7 @@ class Player(Character):
                     self.dodgeVec = force
                     self.dodgeTimer = max(self.dodgeTimer*self.rollBounceTimeScale,self.rollBounceMinTime)
                     #TODO: make 'stunned' state with 'hurt' sprites but no damage blink
-                    self.sprite.changeState('idle'+self.getSpriteDirection()) #placeholder sprite
+                    self.sprite.setState('idle'+self.getSpriteDirection()) #placeholder sprite
         if (self.debugCollider):
             self.debugCollider = (255,0,0)
     def move(self, vect, faceMovement=True, overrideAnimation=False):
@@ -334,6 +352,7 @@ class Player(Character):
             if (self.state=='normal' and not self.attackOb.active):
                 pos = self.position + self.facing.normalize()*8 + Vector2(0,-8)
                 self.attackOb.attack(pos, self.facing)
+                self.sprite.setState('attack'+self.getSpriteDirection())
     def dodge(self, state):
         if (state):
             if (self.state=='normal' and not self.attackOb.active):
@@ -341,7 +360,7 @@ class Player(Character):
                     self.state='roll'
                     self.dodgeVec=Vector2(self.moveInputVec.normalize())
                     self.dodgeTimer=self.dodgeTime
-                    self.sprite.changeState('dodge'+self.getSpriteDirection())
+                    self.sprite.setState('dodge'+self.getSpriteDirection())
                     self.spawnDust(self.dodgeVec * 500 + Vector2(0,-50), count=3)
                 else:
                     self.state='backstep'
@@ -373,7 +392,8 @@ class Player(Character):
             vec = Vector2(self.moveInputVec)
             if (vec.magnitude() > 0):
                 vec=vec.normalize() * self.walkSpeed
-            self.go(vec, faceMovement=(not self.attackOb.active))
+            lockSprite=(self.attackOb.active)
+            self.go(vec, faceMovement=(not lockSprite), overrideAnimation=lockSprite)
         elif self.state=='roll' or self.state == 'backstep':
             self.dodgeVec = (self.dodgeVec + (self.moveInputVec * self.dodgeSteer * g.deltaTime)).normalize()
             vec = self.dodgeVec * self.dodgeSpeed
@@ -419,10 +439,9 @@ class DamageBox(Actor):
         self.rotation=degrees(atan2(facingVec[0],facingVec[1]))+180
         self.rotation=int(self.rotation/45)
         #self.diag=self.rotation%2
-        if (self.rotation%2): self.sprite.changeState('diag')
-        else: self.sprite.changeState('ortho')
+        if (self.rotation%2): self.sprite.setState('diag', restart=True)
+        else: self.sprite.setState('ortho', restart=True)
         self.rotation=int(self.rotation/2)*90
-        self.sprite.animTimer=0
         if (self.windupTime):
             self.timer=self.windupTime
             self.noCollide=True
@@ -451,6 +470,7 @@ class DamageBox(Actor):
         #TODO: only need to do fill, blit, rotate when sprite image updates (IE on state or frame change)
         self.surface.fill((255,255,255,0))
         self.surface.blit(self.sprite.sheet, (0,0), area=self.sprite.currentSprite)
+        self.sprite.draw(None)
         #TODO: build rotation library on sprite creation?
         g.Window.current.screen.blit(pygame.transform.rotate(self.surface, self.rotation),
                                      self.position+self.origin)

@@ -70,7 +70,8 @@ class Sprite:
             return Sprite.State(state)
         return state
 
-    def draw(self, position, dontDraw=False, target=None):
+    def draw(self, position, target=None):
+        #pass None to position to update timers without drawing
         if (len(self.currentState.frames)>1):
             self.animTimer+=g.deltaTime
             #TODO: maybe move timer into update (if draw isn't called, eg while offscreen, anim won't play)
@@ -80,12 +81,12 @@ class Sprite:
                 time=self.currentState.frames[self.currentState.currentFrame].time
                 if (time):
                     self.nextFrameTime=time
-        if (not dontDraw):
+        if (position is not None):
             if (target == None): target=g.Window.current.screen
             #TODO: return this sprite stuff
             target.blit(self.sheet, position, area=self.currentSprite)
-    def changeState(self, state):
-        if (state in self.states and self.states[state] != self.currentState):
+    def setState(self, state, restart=False):
+        if ((state in self.states and self.states[state] != self.currentState) or restart):
             self.animTimer=0
             self.currentState=self.states[state]
             self.currentSprite=self.currentState.activate()

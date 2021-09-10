@@ -20,8 +20,7 @@ class GameLoop:
         pygame.display.set_caption("C'est Une Sword")
         pygame.display.set_icon(pygame.image.load(os.path.join(os.getcwd(), 'Assets','Icon.png')))
         #TODO: some system so multiple bindings to the same action don't trip the action multiple times
-        #maybe a go-between class that gets toggled on when any key in its bindings is pressed,
-        #   and back off only when all keys are released
+        #maybe a go-between class that uses 'or' on all the inputs, and triggers on edges
         GameLoop.mapping ={
             pygame.locals.K_w:'moveUp',
             pygame.locals.K_UP:'moveUp',
@@ -31,7 +30,9 @@ class GameLoop:
             pygame.locals.K_LEFT:'moveLeft',
             pygame.locals.K_d:'moveRight',
             pygame.locals.K_RIGHT:'moveRight',
+            pygame.locals.K_x:'dodge',
             pygame.locals.K_LSHIFT:'dodge',
+            pygame.locals.K_z:'attack',
             pygame.locals.K_SPACE:'attack',
             pygame.locals.K_f:'debugDisplay',
             pygame.locals.K_c:'debugChart'}
@@ -135,7 +136,7 @@ class Window:
         Window.current=self
 
         #effects (placeholder variables, mostly)
-        #bump the screen over an amount
+        #bump the screen over some amount of pixels
         self.bumpVec=None
         self.bumpTime=0
         self.shakeCount=0

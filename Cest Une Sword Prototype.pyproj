@@ -4,7 +4,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>4ca2888c-7d50-4b29-9c53-f30e82ccc74d</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>Cest_Une_Sword_Prototype.py</StartupFile>
+    <StartupFile>Cest_Une_Sword_Prototype.pyw</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
@@ -21,7 +21,36 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Cest_Une_Sword_Prototype.py" />
+    <Compile Include="Cest_Une_Sword_Prototype.pyw" />
+    <Compile Include="entities.py" />
+    <Compile Include="event.py" />
+    <Compile Include="gameloop.py" />
+    <Compile Include="room.py" />
+    <Compile Include="sprite.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Assets\" />
+    <Folder Include="Assets\Levels\" />
+    <Folder Include="Assets\Sprites\" />
+    <Folder Include="Assets\Tilesets\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include=".gitattributes" />
+    <Content Include=".gitignore" />
+    <Content Include="Assets\Icon.png" />
+    <Content Include="Assets\Levels\CaveHall.lvl" />
+    <Content Include="Assets\Levels\CaveHall.png" />
+    <Content Include="Assets\Levels\CaveRoots.lvl" />
+    <Content Include="Assets\Levels\CaveRoots.png" />
+    <Content Include="Assets\Levels\Chapel.lvl" />
+    <Content Include="Assets\Levels\Chapel.png" />
+    <Content Include="Assets\Levels\StartRoom.lvl" />
+    <Content Include="Assets\Levels\StartRoom.png" />
+    <Content Include="Assets\Sprites\Dust.png" />
+    <Content Include="Assets\Sprites\Guy.png" />
+    <Content Include="Assets\Sprites\Sword Slash.png" />
+    <Content Include="Assets\Sprites\Sword Slash2.png" />
+    <Content Include="Assets\Tilesets\Tileset.png" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in
