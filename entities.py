@@ -5,6 +5,7 @@ import sprite as s
 import room as rm
 import gameloop as g
 import random
+from math import atan2, degrees
 
 class Entity:
     #objects in scene
@@ -31,9 +32,9 @@ class Entity:
         pass
     def setActive(self, state):
         self.active=state
-    def draw(self):
+    def draw(self, **kwargs):
         if (self.active and self.sprite):
-            self.sprite.draw(self.position+self.origin)
+            self.sprite.draw(self.position+self.origin, **kwargs)
     def update(self):
         None
     def setRoom(self, room):
@@ -113,6 +114,15 @@ class Actor(Entity):
     def move(self, vect):
         newPos=self.position+vect
         self.position = newPos
+        for child in self.children:
+            child.position += vect
+    def setPosition(self, pos):
+        self.position=pos
+        for child in self.children:
+            pass
+            #TODO: child should store local position (then get rid of the child for loop in move)
+            #child.setPosition(self.position+child.localPosition)
+
     def destroy(self):
         super().destroy()
         self.room.actors.remove(self)
@@ -260,10 +270,12 @@ class Player(Character):
         g.GameLoop.inputEvents['attack'].add(self.inputAttack)
         self.setCollisionLayer('player')
         self.debugCollider=None
-        bounds=pygame.Rect(-16,-8,32,16)
-        center=(-16,-8)
-        sprite=('Sword Slash', (0,0,32,16,100))
-        self.attackOb=DamageBox('playerAttack',self.room,bounds,sprite,1,.05,.05,.5,collisionLayer='playerAttack',
+        bounds=pygame.Rect(-8,-8,16,16)
+        center=(-8,-8)
+        self.attackOb=DamageBox('playerAttack',self.room,bounds,
+                                s.Sprite('Sword Slash2', 'ortho',states={'ortho':(0,0,16,16,100),
+                                                                         'diag':(0,16,16,16,100)}),
+                                1,.03,.02,.25,collisionLayer='playerAttack',
                               ghost=True, parent=self, origin=center)
         #self.debugCollider = (0,255,0)
     def draw(self):
@@ -320,13 +332,11 @@ class Player(Character):
     def inputAttack(self, state):
         if state:
             if (self.state=='normal' and not self.attackOb.active):
-                rotation=0 #TODO: get rotation from facing
-                #TODO: offset position by facing
-                pos = self.position + self.facing*16 + Vector2(0,-8)
-                self.attackOb.attack(pos, rotation)
+                pos = self.position + self.facing*8 + Vector2(0,-8)
+                self.attackOb.attack(pos, self.facing)
     def dodge(self, state):
         if (state):
-            if (self.state=='normal'):
+            if (self.state=='normal' and not self.attackOb.active):
                 if self.moveInputVec.magnitude() > 0:
                     self.state='roll'
                     self.dodgeVec=Vector2(self.moveInputVec.normalize())
@@ -362,18 +372,18 @@ class Player(Character):
         if (self.state=='normal'):
             vec = Vector2(self.moveInputVec)
             if (vec.magnitude() > 0):
-                vec=vec.normalize() * self.walkSpeed# * g.deltaTime
-            self.go(vec)
+                vec=vec.normalize() * self.walkSpeed
+            self.go(vec, faceMovement=(not self.attackOb.active))
         elif self.state=='roll' or self.state == 'backstep':
             self.dodgeVec = (self.dodgeVec + (self.moveInputVec * self.dodgeSteer * g.deltaTime)).normalize()
-            vec = self.dodgeVec * self.dodgeSpeed# * g.deltaTime
+            vec = self.dodgeVec * self.dodgeSpeed
             self.velocity=vec
             self.go(vec, faceMovement=False, overrideAnimation=True)
             self.dodgeTimer -= g.deltaTime
             if (self.dodgeTimer <=0):
                 self.state='normal'
         elif self.state=='rollBounce':
-            vec = self.dodgeVec * self.rollBounceSpeed #* g.deltaTime
+            vec = self.dodgeVec * self.rollBounceSpeed
             self.dodgeVec *= 1-self.rollBounceFalloff*g.deltaTime
             self.go(vec, faceMovement=False, overrideAnimation=True)
             #self.velocity=vec
@@ -397,11 +407,19 @@ class DamageBox(Actor):
         self.damageTime=damageTime
         self.remainTime=remainTime
         self.state='notYetActivated'
+        print(self.sprite.currentSprite)
+        self.surface=pygame.Surface((self.sprite.currentSprite.width,self.sprite.currentSprite.height),
+                                   flags=pygame.SRCALPHA)
         #TODO: collision mask
-    def attack(self, position, rotation):
+    def attack(self, position, facingVec):
         self.setActive(True)
         self.position=position
-        self.rotation=rotation #one of eight directions, clockwise from north
+        self.rotation=degrees(atan2(facingVec[0],facingVec[1]))+180
+        self.rotation=int(self.rotation/45)
+        #self.diag=self.rotation%2
+        if (self.rotation%2): self.sprite.changeState('diag')
+        else: self.sprite.changeState('ortho')
+        self.rotation=int(self.rotation/2)*90
         self.sprite.animTimer=0
         if (self.windupTime):
             self.timer=self.windupTime
@@ -428,8 +446,13 @@ class DamageBox(Actor):
             else:
                 self.setActive(False)
     def draw(self):
-        super().draw()
-        #TODO: sprite rotation
+        #
+        self.surface.fill((255,255,255,0))
+        self.surface.blit(self.sprite.sheet, (0,0), area=self.sprite.currentSprite)
+        #super().draw(target=self.surface)
+        g.Window.current.screen.blit(pygame.transform.rotate(self.surface, self.rotation),
+                                     self.position+self.origin)
+        #g.Window.current.screen.blit(self.surface,self.position+self.origin)
     def onCollide(self, collision):
         super().onCollide(collision)
         col=collision.collider

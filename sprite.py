@@ -69,16 +69,21 @@ class Sprite:
         if (type(state)==list or type(state)==tuple):
             return Sprite.State(state)
         return state
-    def draw(self, position):
+
+    def draw(self, position, dontDraw=False, target=None):
         if (len(self.currentState.frames)>1):
             self.animTimer+=g.deltaTime
+            #TODO: maybe move timer into update (if draw isn't called, eg while offscreen, anim won't play)
             if (self.animTimer >= self.nextFrameTime):
                 self.animTimer = 0
                 self.currentSprite=self.currentState.advanceFrame()
                 time=self.currentState.frames[self.currentState.currentFrame].time
                 if (time):
                     self.nextFrameTime=time
-        g.Window.current.screen.blit(self.sheet, position, area=self.currentSprite)
+        if (not dontDraw):
+            if (target == None): target=g.Window.current.screen
+            #TODO: return this sprite stuff
+            target.blit(self.sheet, position, area=self.currentSprite)
     def changeState(self, state):
         if (state in self.states and self.states[state] != self.currentState):
             self.animTimer=0
