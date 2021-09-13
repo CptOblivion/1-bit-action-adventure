@@ -35,12 +35,19 @@ class Entity:
     def position(self, value):
         #TODO: rework so set is also globalPosition, make new localPosition variable for setting local
         #(since += and whatnot doesn't work with parent/child this way)
-        self._localPosition=value
-        if (self._parent): self._globalPosition=value+self.parent._globalPosition
-        else: self._globalPosition=value
+        self._globalPosition=value
+        if (self._parent): self._localPosition=value-self.parent._globalPosition
+        else: self._localPosition=value
         for child in self.children:
             child.position=child._localPosition #trigger the child to update its own position
             #child._globalPosition=self._globalPosition + child._localPosition
+    @property
+    def localPosition(self):
+        return self._localPosition
+    @localPosition.setter
+    def localPosition(self, value):
+        if (self.parent): self.position=self.parent._globalPosition+value
+        else: self.position=value
     def getCell(self, gridSize):
         #TODO: for optimization (get cell to cull collision tests, also to sort into rendering cells)
         pass
