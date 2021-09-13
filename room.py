@@ -197,31 +197,8 @@ class WallEntry:
                 if (not self.cached):
                     self.wall.draw(self.position, self.corners)
     def collide(self, actor, applyForce = True):
-        collisionBox=actor.collisionBounds.move(actor.position + actor.velocity*g.deltaTime)
-        if (self.rect.colliderect(collisionBox)):
-            normal=Vector2(collisionBox.center) - Vector2(self.rect.center)
-            sign=[1,1]
-            if (normal.x < 0): sign[0] = -1
-            if (normal.y < 0): sign[1] = -1
-            force=Vector2(self.rect.width/2*sign[0] + collisionBox.width/2*sign[0] - normal.x,
-                            self.rect.height/2*sign[1] + collisionBox.height/2*sign[1] - normal.y)
-
-            #TODO: use vel to bias result
-            #   (goal: so if actor hits a corner, the are "nudged" sideways and can continue moving
-            #   instead of being stopped because two squares overlapped by 2 pixels
-            if (abs(force.x) > abs(force.y)):
-                #normal is along the y axis
-                force.x=0
-                if (applyForce and not actor.ghost):
-                    #TODO: there's gotta be a way to simplify this down
-                    actor.position.y += force.y + actor.velocity.y * g.deltaTime
-                    actor.velocity.y=0
-            else:
-                #normal is along the x axis
-                force.y=0
-                if (applyForce and not actor.ghost):
-                    actor.position.x += force.x + actor.velocity.x * g.deltaTime
-                    actor.velocity.x=0
+        force=e.Actor.__collideTest__(self.rect, actor, applyForce)
+        if (force):
             actor.onCollide(e.Actor.Collision(self, force,'wall'))
 
 class Tile:

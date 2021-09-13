@@ -35,7 +35,8 @@ class GameLoop:
             pygame.locals.K_z:'attack',
             pygame.locals.K_SPACE:'attack',
             pygame.locals.K_f:'debugDisplay',
-            pygame.locals.K_c:'debugChart'}
+            pygame.locals.K_c:'debugChart',
+            pygame.locals.K_v:'debugSpawn'}
         GameLoop.inputEvents={}
         for key in GameLoop.mapping:
             val=GameLoop.mapping[key]
@@ -81,22 +82,24 @@ class GameLoop:
         for actor in rm.Room.current.actors:
             if (actor.active and not actor.noCollide):
                 if (not actor.noCollideActors): testActors.append(actor)
-                cellIndex=actor.position//rm.Room.current.tileSize
-                remainder=actor.position - cellIndex * rm.Room.current.tileSize
-                remainder -= Vector2(rm.Room.current.tileSize/2,rm.Room.current.tileSize/2)
-                if (remainder.x > 0):remainder.x=1
-                else: remainder.x=-1
-                if (remainder.y > 0): remainder.y=1
-                else: remainder.y=-1
-                for x in range(0,2):
-                    for y in range(0,2):
-                        wall = rm.Room.current.getWall((int(cellIndex.x + remainder.x*x), int(cellIndex.y + remainder.y*y)))
-                        if(wall and wall.wall): wall.collide(actor)
-                actor.afterPhysics()
+                if (not actor.noCollideWalls):
+                    cellIndex=actor.position//rm.Room.current.tileSize
+                    remainder=actor.position - cellIndex * rm.Room.current.tileSize
+                    remainder -= Vector2(rm.Room.current.tileSize/2,rm.Room.current.tileSize/2)
+                    if (remainder.x > 0):remainder.x=1
+                    else: remainder.x=-1
+                    if (remainder.y > 0): remainder.y=1
+                    else: remainder.y=-1
+                    for x in range(0,2):
+                        for y in range(0,2):
+                            wall = rm.Room.current.getWall((int(cellIndex.x + remainder.x*x), int(cellIndex.y + remainder.y*y)))
+                            if(wall and wall.wall): wall.collide(actor)
         while len(testActors) > 1:
             actor=testActors.pop(0)
             for actor2 in testActors:
                 actor.gameloopCollision(actor2)
+        for actor in rm.Room.current.actors:
+            actor.afterPhysics()
     def main(game):
         while game.running:
             GameLoop.updateDeltaTime()

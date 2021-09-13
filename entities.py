@@ -5,12 +5,14 @@ import sprite as s
 import room as rm
 import gameloop as g
 import random
-from math import atan2, degrees
+from math import atan2, degrees, ceil, floor
 
 class Entity:
     #objects in scene
     def __init__(self, name, room, sprite, position=(100,100), origin=(0,0), parent=None):
+        self.children=[]
         self.name = name
+        self._parent=None
         self.position=Vector2(position)
         if (type(sprite) == str):
             self.sprite=s.Sprite(sprite, (0,0,room.tileSize,room.tileSize))
@@ -23,10 +25,22 @@ class Entity:
         self.room = room
         if (self.room):
             self.room.entities.append(self)
-        self.children=[]
         self.parent=None
         if (parent):
             self.setParent(parent)
+    @property
+    def position(self):
+        return self._globalPosition
+    @position.setter
+    def position(self, value):
+        #TODO: rework so set is also globalPosition, make new localPosition variable for setting local
+        #(since += and whatnot doesn't work with parent/child this way)
+        self._localPosition=value
+        if (self._parent): self._globalPosition=value+self.parent._globalPosition
+        else: self._globalPosition=value
+        for child in self.children:
+            child.position=child._localPosition #trigger the child to update its own position
+            #child._globalPosition=self._globalPosition + child._localPosition
     def getCell(self, gridSize):
         #TODO: for optimization (get cell to cull collision tests, also to sort into rendering cells)
         pass
@@ -36,7 +50,7 @@ class Entity:
         if (self.active and self.sprite):
             self.sprite.draw(self.position+self.origin, **kwargs)
     def update(self):
-        None
+        pass
     def setRoom(self, room):
         if (self.room):
             self.room.entities.remove(self)
@@ -54,25 +68,30 @@ class Entity:
     def actualDestroy(self):
         del self
     def setParent(self, parent):
+        #TODO: make parent into an @property so we can safely set it directly
         if (self.parent):
             self.parent.children.remove(self)
         parent.children.append(self)
-        self.parent=parent
+        self.parent=self._parent = parent
+        
+        print('setting ',self.name,'parent to ', parent.name,'. childlist:',parent.children)
+        #self.position -= parent.position
         #print('changed ', self.name, "'s parent to ", self.parent, '. New siblings (plus self): ', self.parent.children)
 
 class Actor(Entity):
     collisionLayerNames={'default':1,'monsters':2,'player':3,'breakables':4,
-                         'monsterAttack':5,'playerAttack':6,'hitStun':7,'unused':8}
+                         'monsterAttack':5,'playerAttack':6,'hitStun':7,'dodgeroll':8}
     #reminder: the bits are in right-to-left order 
+    #TODO: easier function to set masks (and make sure their complement is also set)
     collisionMask=[0,
-                   0b01001111, #default
-                   0b00101101, #monsters
-                   0b00011111, #player
-                   0b00111111, #breakables
+                   0b11001111, #default
+                   0b01101101, #monsters
+                   0b01011111, #player
+                   0b11111111, #breakables
                    0b00001100, #monsterAttack
                    0b00001010, #playerAttack
-                   0b00000001, #hitstun
-                   0b00000000] #unused
+                   0b10001111, #hitstun
+                   0b01001001] #dodgeroll
     class Collision:
         def __init__(self, collider, force, collidingObType):
             #collidingObTypes:'floor', 'wall', 'actor'
@@ -82,26 +101,70 @@ class Actor(Entity):
     #has collision
     def __init__(self, name, room, collisionBounds, sprite, ghost=False, **kwargs):
         self.collisionLayer=1
+        #weird fake initializations so the position and collisionBound setters won't complain later
+        self._globalPosition=Vector2()
+        self.collisionBounds=pygame.Rect(0,0,0,0)
         #TODO: add static tag (never check wall or floor collisions)
-        #TODO: add onlyCollidePlayer tag (for performance, self explanatory)
         #TODO: add noCollideActors tag to only check walls for collision
-
+        #TODO: instead of bounds and origin, make it origin and size (w,h) and generate bounds from that
+        #   (for easier definition down the line)
+        #   (but of course include optional bounds input to override it)
         super().__init__(name, room, sprite, **kwargs)
         self.collisionBounds=collisionBounds
         if (self.room): self.room.actors.append(self)
         self.ghost=ghost #registers collisions, but doesn't receive physics
         self.skipDamage=True
         self.noCollideActors=False #skips collision tests with other actors
+        self.noCollideWalls=False#skips collision test with walls
         self.noCollide=False #skips collision entirely
         self.velocity = pygame.Vector2(0,0)
         self.health=1
+        self.damageITime=.5
+        self.damageICounter=0
+        self.collisionLayerLast=None
+        self.isObstacle=False
+        self.debugCollider=None
+        #TODO: map b key to toggle debug colliders
+        #self.debugCollider = (0,255,0)
+    @property
+    def collisionBounds(self):
+        return self._globalCollisionBounds
+    @collisionBounds.setter
+    def collisionBounds(self, value):
+        self._localCollisionBounds = value
+        self._globalCollisionBounds=value.move(self._globalPosition)
+    @property
+    def position(self):
+        #return super().position()
+        return self._globalPosition
+    @position.setter
+    def position(self, value):
+        #TODO: there's probably a way to inherit the position setter/getter
+        #   possibly by using property(fset=lambda self=self:self._setPosition(self)) on Entity
+        #super().position(value)
+        self._localPosition=value
+        if (self._parent): self._globalPosition=value+self.parent._globalPosition
+        else: self._globalPosition=value
+        for child in self.children:
+            child.position=child._localPosition #trigger the child to update its own position
+        self.collisionBounds=self._localCollisionBounds
+    def getBoundsAfterPhysics(self):
+        """
+        rect is quantized to pixels, so this function recreates the rect where it will be after velocity
+            since applying the velocity to the stored global rect accumulates rounding errors   
+        """
+        return self._localCollisionBounds.move(self._globalPosition+self.velocity*g.deltaTime)
     def setCollisionLayer(self,layer):
+        self.collisionLayerLast=self.collisionLayer
         if (type(layer)==int): self.collisionLayer=layer
         else: self.collisionLayer = Actor.collisionLayerNames[layer]
     def takeDamage(self, damage, fromActor):
-        if (not self.skipDamage):
+        if (not self.skipDamage and self.damageICounter <=0):
+            self.damageICounter=self.damageITime
             self.health -= damage
             if self.health <= 0: self.onDeath()
+            self.damageICounter=self.damageITime
+            self.setCollisionLayer('hitStun')
     def onDeath(self):
         pass
     def setRoom(self, room):
@@ -112,40 +175,99 @@ class Actor(Entity):
         if (self.active):
             self.move(self.velocity*g.deltaTime)
     def move(self, vect):
-        newPos=self.position+vect
+        #probably doesn't need to be a separate function, really
+        if (self.parent):
+            newPos=self._localPosition+vect
+        else:
+            newPos=self.position+vect
         self.position = newPos
-        for child in self.children:
-            child.position += vect
     def setPosition(self, pos):
         self.position=pos
-        for child in self.children:
-            pass
-            #TODO: child should store local position (then get rid of the child for loop in move)
-            #child.setPosition(self.position+child.localPosition)
+    def draw(self):
+        super().draw()
+        if (self.debugCollider):
+            tempBox = pygame.Surface((self.collisionBounds.width, self.collisionBounds.height))
+            tempBox.fill(self.debugCollider)
+            g.Window.current.screen.blit(tempBox, self.collisionBounds.topleft)
 
     def destroy(self):
         super().destroy()
         self.room.actors.remove(self)
     def testCollision(self, actor):
         collisionMask=(Actor.collisionMask[actor.collisionLayer] >> (self.collisionLayer -1)) & 1
-        if (actor.active and (not actor.noCollide) and collisionMask and (not actor.noCollideActors) and 
-            self.collisionBounds.move(self.position).colliderect(actor.collisionBounds.move(actor.position))):
-            force=Vector2(0,0)
-            if (self.ghost == actor.ghost == False):
-                None
-                #resolve physics
-                #store result in force on each sprite
-            return(Actor.Collision(actor,force,'actor'))
+        if (actor.active and (not actor.noCollide) and collisionMask):
+            #TODO: give Actor a worldBounds property, that gets updated any time position or velocity change
+            #TODO: the original declaration will probably look like:
+            #self.physicsBounds = property(getter_function, setter_function)
+            #then use self._physicsBounds to store the bounds in local coordinates (and the getter returns that plus position)
+            #we'll still have to do velocity in the physics checks manually but that's finb
+            #selfNewBounds=self.collisionBounds.move(self.velocity*g.deltaTime)
+            #actorNewBounds=actor.collisionBounds.move(actor.velocity*g.deltaTime)
+            selfNewBounds=self.getBoundsAfterPhysics()
+            actorNewBounds=actor.getBoundsAfterPhysics()
+            if (selfNewBounds.colliderect(actorNewBounds)):
+                force=Vector2(0,0)
+                if (self.ghost == actor.ghost == False and (self.isObstacle or actor.isObstacle)):
+                    force = Actor.__collideTest__(selfNewBounds, actor, True, skipTest=True)
+                    #resolve physics
+                    #store result in force on each sprite
+                return(Actor.Collision(actor,force,'actor'))
         return None
     def gameloopCollision(self,actor):
         if (self.active):
-            collision=self.testCollision(actor)
+            #make sure if one of them is an obstacle, it's the one performing the collision
+            if (actor.isObstacle):
+                bumper=actor
+                bumpee=self
+            else:
+                bumper=self
+                bumpee=actor
+            collision = bumper.testCollision(bumpee)
             if (collision):
-                actor.onCollide(Actor.Collision(self,collision.force,'actor'))
-                self.onCollide(collision)
-
+                bumpee.onCollide(Actor.Collision(bumper,collision.force,'actor'))
+                bumper.onCollide(collision)
     def onCollide(self, collision):
-        None
+        if (self.debugCollider):
+            self.debugCollider = (255,0,0)
+    def returnFromDamage(self):
+        pass
+    def update(self):
+        super().update()
+        if (self.damageICounter>0):
+            self.damageICounter-=g.deltaTime
+            if (self.damageICounter <=0):
+                self.returnFromDamage()
+                self.setCollisionLayer(self.collisionLayerLast)
+        if (self.debugCollider): self.debugCollider=(0,255,0)
+    def __collideTest__(ownBounds, actor, applyForce, skipTest=False):
+        collisionBox=actor.getBoundsAfterPhysics()
+        if (skipTest or ownBounds.colliderect(collisionBox)):
+            normal=Vector2(collisionBox.center) - Vector2(ownBounds.center)
+            sign=[1,1]
+            if (normal.x < 0): sign[0] = -1
+            if (normal.y < 0): sign[1] = -1
+            force=Vector2(ownBounds.width/2*sign[0] + collisionBox.width/2*sign[0] - normal.x,
+                            ownBounds.height/2*sign[1] + collisionBox.height/2*sign[1] - normal.y)
+
+            #TODO: use vel to bias result
+            #   (goal: so if actor hits a corner, the are "nudged" sideways and can continue moving
+            #   instead of being stopped because two squares overlapped by 2 pixels
+            #TODO: support for collision with diagonals (actually get the normal)
+            if (abs(force.x) > abs(force.y)):
+                #normal is along the y axis
+                force.x=0
+                if (applyForce and not actor.ghost):
+                    #TODO: we're vibrating again for some reason
+                    actor.position.y += force.y + actor.velocity.y * g.deltaTime
+                    actor.velocity.y=0
+            else:
+                #normal is along the x axis
+                force.y=0
+                if (applyForce and not actor.ghost):
+                    actor.position.x += force.x + actor.velocity.x * g.deltaTime
+                    actor.velocity.x=0
+            return force
+        return None
         
 class Character(Actor):
     def __init__(self, name, room, collisionBounds, sprite, **kwargs):
@@ -187,21 +309,13 @@ class Character(Actor):
                 line.append((col*w,h*i,w,h,t))
             outDict[baseName+'_'+suffixes[i]]=tuple(line)
         return outDict
-        #return {baseName+'_-1-1':(column,h*5,w,h,t),
-        #        baseName+'_0-1':(column,h*6,w,h,t),
-        #        baseName+'_1-1':(column,h*7,w,h,t),
-        #        baseName+'_-10':(column,h*4,w,h,t),
-        #        baseName+'_10':(column,0,w,h,t),
-        #        baseName+'_-11':(column,h*3,w,h,t),
-        #        baseName+'_01':(column,h*2,w,h,t),
-        #        baseName+'_11':(column,h,w,h,t)}
 
 class Player(Character):
     #controlled by player
     current=None
     def __init__(self, **kwargs):
         Player.current=self
-        collisionBounds = pygame.Rect(-6,-4,12,8)
+        collisionBounds = pygame.Rect(-4,-3,8,6)
         #states: 'normal', 'roll', 'backstep', 'damage', 'rollBounce'
         self.state='normal'
         sheetName='Guy'
@@ -214,56 +328,6 @@ class Player(Character):
                     **Character.generateFacingSprites('dodge',3,w,h,2),
                     **Character.generateFacingSprites('attack',4,w,h,2)
                     }
-        #animDict={
-        #          'walk_-1-1':(
-        #              (xWalk1,ul,w,h,tWalk),
-        #              (xIdle,ul,w,h),
-        #              (xWalk2,ul,w,h),
-        #              (xIdle,ul,w,h)),
-        #          'walk_0-1':(
-        #              (xWalk1,u,w,h,tWalk),
-        #              (xIdle,u,w,h),
-        #              (xWalk2,u,w,h),
-        #              (xIdle,u,w,h)),
-        #          'walk_1-1':(
-        #              (xWalk1,ur,w,h,tWalk),
-        #              (xIdle,ur,w,h),
-        #              (xWalk2,ur,w,h),
-        #              (xIdle,ur,w,h)),
-        #          'walk_-10':(
-        #              (xWalk1,l,w,h,tWalk),
-        #              (xIdle,l,w,h),
-        #              (xWalk2,l,w,h),
-        #              (xIdle,l,w,h)),
-        #          'walk_10':(
-        #              (xWalk1,r,w,h,tWalk),
-        #              (xIdle,r,w,h),
-        #              (xWalk2,r,w,h),
-        #              (xIdle,r,w,h)),
-        #          'walk_-11':(
-        #              (xWalk1,dl,w,h,tWalk),
-        #              (xIdle,dl,w,h),
-        #              (xWalk2,dl,w,h),
-        #              (xIdle,dl,w,h)),
-        #          'walk_01':((
-        #              (xWalk1,d,w,h,tWalk),
-        #              (xIdle,d,w,h),
-        #              (xWalk2,d,w,h),
-        #              (xIdle,d,w,h))),
-        #          'walk_11':(
-        #              (xWalk1,dr,w,h,tWalk),
-        #              (xIdle,dr,w,h),
-        #              (xWalk2,dr,w,h),
-        #              (xIdle,dr,w,h)),
-        #          'dodge_-1-1':(xDodge,ul,w,h,tDodge),
-        #          'dodge_0-1':(xDodge,u,w,h,tDodge),
-        #          'dodge_1-1':(xDodge,ur,w,h,tDodge),
-        #          'dodge_-10':(xDodge,l,w,h,tDodge),
-        #          'dodge_10':(xDodge,r,w,h,tDodge),
-        #          'dodge_-11':(xDodge,dl,w,h,tDodge),
-        #          'dodge_01':(xDodge,d,w,h,tDodge),
-        #          'dodge_11':(xDodge,dr,w,h,tDodge),
-        #          'dodge':(xDodge,l,w,h,100)}
         super().__init__('player', None, collisionBounds,
                        s.Sprite(sheetName, 'idle_10', states = animDict, sheet=playerSheet),origin=(-8,-15),**kwargs)
         self.walkSpeed = 100
@@ -282,8 +346,8 @@ class Player(Character):
         g.GameLoop.inputEvents['moveRight'].add(self.inputMoveRight)
         g.GameLoop.inputEvents['dodge'].add(self.dodge)
         g.GameLoop.inputEvents['attack'].add(self.inputAttack)
+        g.GameLoop.inputEvents['debugSpawn'].add(self.inputDebugSpawn)
         self.setCollisionLayer('player')
-        self.debugCollider=None
         bounds=pygame.Rect(-8,-8,16,16)
         center=(-8,-8)
         self.attackOb=DamageBox('playerAttack',self.room,bounds,
@@ -295,16 +359,14 @@ class Player(Character):
                                                                                   (32,16,16,16,100))}),
                                 1,.03,.02,.25,collisionLayer='playerAttack',
                               ghost=True, parent=self, origin=center)
-        #self.debugCollider = (0,255,0)
     def draw(self):
         Character.draw(self)
-        if (self.debugCollider):
-            tempBox = pygame.Surface((self.collisionBounds.width, self.collisionBounds.height))
-            tempBox.fill(self.debugCollider)
-            g.Window.current.screen.blit(tempBox, self.position+self.collisionBounds.topleft)
+    def inputDebugSpawn(self, state):
+        if (state):
+            Crate(self.room, self.position+self.facing*16)
     def onCollide(self, collision):
         super().onCollide(collision)
-        if (self.state=='roll' and collision.collidingObType == 'wall'):
+        if (self.state=='roll' and collision.force.magnitude()>0):
             #this bit is a bit jank, but we accumulate force over the course of the frame
             #   to check if we're in a corner (since each individual block push in a corner will be orthogonal,
             #   so diagonal rolling into a corner won't bounce
@@ -323,8 +385,6 @@ class Player(Character):
                     self.dodgeTimer = max(self.dodgeTimer*self.rollBounceTimeScale,self.rollBounceMinTime)
                     #TODO: make 'stunned' state with 'hurt' sprites but no damage blink
                     self.sprite.setState('idle'+self.getSpriteDirection()) #placeholder sprite
-        if (self.debugCollider):
-            self.debugCollider = (255,0,0)
     def move(self, vect, faceMovement=True, overrideAnimation=False):
         Character.move(self, vect)
     def inputMoveUp(self, state):
@@ -350,7 +410,8 @@ class Player(Character):
     def inputAttack(self, state):
         if state:
             if (self.state=='normal' and not self.attackOb.active):
-                pos = self.position + self.facing.normalize()*8 + Vector2(0,-8)
+                #pos = self.position + self.facing.normalize()*8 + Vector2(0,-8)
+                pos = self.facing.normalize()*8 + Vector2(0,-8)
                 self.attackOb.attack(pos, self.facing)
                 self.sprite.setState('attack'+self.getSpriteDirection())
     def dodge(self, state):
@@ -413,14 +474,13 @@ class Player(Character):
                 
         self.totalForce=Vector2()
 
-        #TODO: move hitbox debug drawing to Actor
-        if (self.debugCollider): self.debugCollider=(0,255,0)
 class DamageBox(Actor):
     def __init__(self, name, room, collisionBounds, sprite, damage,
                  windupTime,damageTime,remainTime, collisionLayer='monsterAttack', **kwargs):
         super().__init__(name, room, collisionBounds,sprite, **kwargs)
         print('damage box added, but not yet implemented')
         self.ghost=True
+        self.noCollideWalls = True
         self.setActive(False)
         self.skipDamage=True
         self.damage=damage
@@ -478,7 +538,8 @@ class DamageBox(Actor):
     def onCollide(self, collision):
         super().onCollide(collision)
         col=collision.collider
-        print('hit ', col)
+        if hasattr(col,'takeDamage'):
+            col.takeDamage(1,self)
 
 class Particle(Actor):
     def __init__(self, name, room, collisionBounds, sprite, life, **kwargs):
@@ -521,3 +582,25 @@ class EffectTrigger(Actor):
         super().onCollide(collision)
         if (collision.collider == Player.current):
             self.onTrigger()
+class Crate(Actor):
+    def __init__(self, room, position):
+        super().__init__('crate',room, pygame.Rect(-8,-13,16,16),
+                         s.Sprite('Crate','normal',states={'normal':(0,0,16,16),
+                                                           'hurt':((0,0,1,1,.03),(0,0,16,16))}),
+                         position=position, origin=(-8,-13))
+        self.skipDamage=False
+        self.setCollisionLayer('breakables')
+        self.health=3
+        self.isObstacle=True
+    def takeDamage(self, damage, fromActor):
+        super().takeDamage(damage, fromActor)
+        #TODO: use something other than a custom-defined sprite for flicker
+        #   maybe an invisible flag that we can toggle on and off while hurt
+        #TODO: add that invisible flag
+        self.sprite.setState('hurt')
+    def onDeath(self):
+        super().onDeath()
+        self.destroy()
+    def returnFromDamage(self):
+        super().returnFromDamage()
+        self.sprite.setState('normal')
