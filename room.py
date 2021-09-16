@@ -11,14 +11,13 @@ import entities as e
 class RoomChangeEvent(ev.Event):
     #technically could just use InputEvent, but it's nice having a separate name to avoid confusion
     def invoke(self, room):
-        for subscriber in self.subscribers:
-            subscriber(room)
+        super().invoke(room)
 
 class Room:
     current=None
     init=False
     onRoomChange = RoomChangeEvent()
-    def __init__(self, roomFile):
+    def __init__(self, roomFile: str):
         self.onRoomChange = RoomChangeEvent()
         self.onRoomLeave = RoomChangeEvent()
         self.config = configparser.ConfigParser()
@@ -108,7 +107,7 @@ class Room:
             for entity in sorted(entityPositions[y], key=lambda entity: entity.position.y):
                 entity.draw()
         g.Window.current.flip()
-    def getWall(self, position, oobReturn=None):
+    def getWall(self, position:Vector2, oobReturn=None):
         if (position[0] < 0 or position[0] >= self.width or
             position[1] < 0 or position[1] >= self.height):
             return oobReturn #out of bounds return
@@ -236,7 +235,7 @@ class WallTile(Tile):
                                      rect.width/2, self.baseHeight),
                          pygame.Rect(rect.left + rect.width/2, rect.top+self.baseHeight/2,
                                      rect.width/2, rect.height-self.baseHeight/2)))
-    def draw(self, gridPosition, corners, surface=None):
+    def draw(self, gridPosition:tuple, corners:tuple, surface=None):
         if (not surface):
             surface=g.Window.current.screen
         tiles = Room.current.walls

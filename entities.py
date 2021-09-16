@@ -28,6 +28,7 @@ class Entity:
         self.parent=None
         if (parent):
             self.setParent(parent)
+        self.deathTimer=None
     @property
     def position(self):
         return self._globalPosition
@@ -50,6 +51,10 @@ class Entity:
         if (self.active and self.sprite):
             self.sprite.draw(self.position+self.origin, **kwargs)
     def update(self):
+        if (self.deathTimer is not None):
+            self.deathTimer -= g.deltaTime
+            if (self.deathTimer <= 0):
+                self.destroy()
         pass
     def setRoom(self, room):
         if (self.room):
@@ -58,11 +63,15 @@ class Entity:
         room.entities.append(self)
         for child in self.children:
             child.setRoom(room)
-    def destroy(self):
+    def destroy(self, time:float=None):
+        if (time):
+            self.deathTimer=time
+            return
         self.room.entities.remove(self)
-        if (self.parent): self.parent.remove(self)
+        if (self.parent): self.parent.children.remove(self)
         for child in self.children:
             child.destroy()
+        del self
         #TODO: add self to garbage cleanup array in GameLoop,
         #   which will run actualDestroy right before the next frame starts
     def actualDestroy(self):
@@ -311,13 +320,15 @@ class Character(Actor):
         return outDict
 
 class Player(Character):
+    #TODO: move to own file
     #controlled by player
     current=None
     def __init__(self, **kwargs):
         Player.current=self
         collisionBounds = pygame.Rect(-4,-3,8,6)
         #states: 'normal', 'roll', 'backstep', 'damage', 'rollBounce'
-        self.state='normal'
+        self.state='start'
+        self.dodgeTimer = 2.5
         sheetName='Guy'
         playerSheet=pygame.image.load(os.path.join(os.getcwd(), 'Assets','Sprites',sheetName+'.png'))
         w=16
@@ -326,10 +337,12 @@ class Player(Character):
         animDict = {**Character.generateFacingSprites('idle', 0, w,h,.25),
                     **Character.generateFacingSprites('walk',(1,0,2,0),w,h,.08),
                     **Character.generateFacingSprites('dodge',3,w,h,2),
-                    **Character.generateFacingSprites('attack',4,w,h,2)
+                    **Character.generateFacingSprites('attack',4,w,h,2),
+                    #for some reason, the first frame (regardless of time) is skipped on spawn
+                    'landing':((0,0,0,0,1),(0,0,0,0,1.5),(96,0,16,16,1),(112,0,16,16,.3),(0,32,16,16,1))
                     }
         super().__init__('player', None, collisionBounds,
-                       s.Sprite(sheetName, 'idle_10', states = animDict, sheet=playerSheet),origin=(-8,-15),**kwargs)
+                       s.Sprite(sheetName, 'landing', states = animDict, sheet=playerSheet),origin=(-8,-15),**kwargs)
         self.walkSpeed = 100
         self.dodgeSpeed = 350
         self.dodgeSteer = 15
@@ -446,6 +459,11 @@ class Player(Character):
                             .75+rand*ra*3, position=self.position, origin=(-4,-6))
             dust.velocity=vel * (1-abs(rand)*ry) + cross*rand*rx
             dust.damping=8
+    def spawnLandingImpact(self):
+        impactSprite=Entity('impactEffect',self.room,('Guy',((0,0,0,0,1),(0,0,0,0,1.5),(96,16,16,8,.3),(112,16,16,8),(96,24,16,8))),
+                            position=self.position, origin=(-8,-4))
+        impactSprite.destroy(time=2.4)
+
 
     def update(self):
         Character.update(self)
@@ -471,7 +489,10 @@ class Player(Character):
             self.dodgeTimer -= g.deltaTime
             if (self.dodgeTimer <= 0):
                 self.state='normal'
-                
+        elif (self.state=='start'):
+                self.dodgeTimer -= g.deltaTime
+                if (self.dodgeTimer <= 0):
+                    self.state='normal'
         self.totalForce=Vector2()
 
 class DamageBox(Actor):
@@ -547,6 +568,7 @@ class Particle(Actor):
         self.life=life
         self.damping = 0
         self.noCollideActors=False
+        self.room.onRoomLeave.add(self.roomLeave)
         #TODO: some sort of flag (in Entity, probably) to destroy on room change
         #   maybe just subscribe to on room change (don't forget to unsubscribe on destroy)
     def update(self):
@@ -557,6 +579,11 @@ class Particle(Actor):
         self.life -= g.deltaTime
     def draw(self):
         super().draw()
+    def roomLeave(self, room):
+        self.destroy()
+    def destroy(self):
+        self.room.onRoomLeave.remove(self.roomLeave)
+        super().destroy()
 class EffectTrigger(Actor):
     #TODO: make Trigger base class
     def quickAdd(name, position, effect, effectValues):

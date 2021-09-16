@@ -46,6 +46,7 @@ class GameLoop:
         game.window = Window()
         player=ent.Player()
         GameLoop.changeRoom('StartRoom', 'start')
+        player.spawnLandingImpact()
         GameLoop.lastTime = datetime.datetime.now()
         
     def updateDeltaTime():
