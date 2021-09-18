@@ -377,7 +377,7 @@ class Player(Character):
         self.dodgeSteer = 15
         self.rollTime=.15
         self.backstepTime=.05
-        self.dodgeCooldown=.4
+        self.dodgeCooldown=.3
         self.dodgeCooldownTimer=0
         self.attackStepSpeed = 40
         self.rollBounceTimeScale=5 #on rolling into an obstacle, stun for this factor of rmaining roll time

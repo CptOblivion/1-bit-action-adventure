@@ -127,6 +127,10 @@ class GameLoop:
         key='controllerButton'+str(event.button)
         if (key in GameLoop.mappingDigital):
             GameLoop.inputEvents[GameLoop.mappingDigital[key]].invoke(buttonDown)
+    def controllerAxisMotion(event):
+        key = 'controllerAxis' + str(event.axis)
+        if (key in GameLoop.mappingAnalog):
+            GameLoop.inputEvents[GameLoop.mappingAnalog[key]].invoke(event.value)
     def controllerHatMotion(event):
         if ('controllerHatX' in GameLoop.mappingAnalog):
             GameLoop.inputEvents[GameLoop.mappingAnalog['controllerHatX']].invoke(event.value[0])
@@ -152,6 +156,8 @@ class GameLoop:
                     GameLoop.controllerButtonInput(event, False)
                 elif event.type == locals.JOYHATMOTION:
                     GameLoop.controllerHatMotion(event)
+                elif event.type ==  locals.JOYAXISMOTION:
+                    GameLoop.controllerAxisMotion(event)
                 elif event.type == locals.JOYDEVICEADDED:
                     GameLoop.addController(event)
                 elif event.type == locals.JOYDEVICEREMOVED:
