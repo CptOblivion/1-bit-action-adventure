@@ -344,7 +344,12 @@ class PlayerSpawn(Entity):
             else:
                 g.Window.current.shake(6,1,0,.05)
                 player = Player(self.room, position=self.targetPosition)
-                player.spawnLandingImpact()
+                impactSprite=Entity('impactEffect',self.room,('Guy',(
+                    (0,0,0,0,1),(112,48,16,8,.3),(112,64,16,8),(112,72,16,8))),
+                                    position=self.position, origin=(-8,-4))
+                impactSprite.destroy(time=.9)
+                player.spawnDust((-300,0), count=3)
+                player.spawnDust((300,0), count=3)
                 self.destroy()
 class Player(Character):
     #TODO: move to own file
@@ -486,6 +491,7 @@ class Player(Character):
                     self.queueState('backstep')
 
     def spawnDust(self, vel, count=5, randStr=1):
+        vel = Vector2(vel)
         if not hasattr(self, 'dustSpriteSheet'):
             self.dustSpriteSheet=s.Sprite.loadSheet('Dust')
         #randStr=0
@@ -503,11 +509,6 @@ class Player(Character):
                             .75+rand*ra*3, position=self.position, origin=(-4,-6))
             dust.velocity=vel * (1-abs(rand)*ry) + cross*rand*rx
             dust.damping=8
-    def spawnLandingImpact(self):
-        impactSprite=Entity('impactEffect',self.room,('Guy',(
-            (0,0,0,0,1),(112,48,16,8,.3),(112,64,16,8),(112,72,16,8))),
-                            position=self.position, origin=(-8,-4))
-        impactSprite.destroy(time=.9)
     def update(self):
         Character.update(self)
         updateDodgeDelay = True
