@@ -12,13 +12,38 @@ class RoomChangeEvent(ev.Event):
     #technically could just use InputEvent, but it's nice having a separate name to avoid confusion
     def invoke(self, room):
         super().invoke(room)
+class RoomChangeDetails:
+    def __init__(self, oldRoom, newRoom, oldDoor, newDoor):
+        #TODO: do we need oldRoom? (currently need oldDoor to get the player offset on that door when they left
+        #   but there's probably a better way
+        self.oldRoom=oldRoom
+        self.newRoom=newRoom
+        self.oldDoor=oldDoor
+        self.newDoor = newDoor
 
 class Room:
     current=None
     init=False
     onRoomChange = RoomChangeEvent()
+    rooms={}
+    def loadRoom(roomName):
+        print('loading room ',roomName)
+        #TODO: learn about how to trigger garbage collection (and ensure the previous room is properly flushed)
+        Room.rooms[roomName] = Room(roomName)
+    def changeRoom(roomName, doorName, oldDoor=None):
+        #print('moving to room ', roomName, ' at door ', doorName)
+        if (not roomName in Room.rooms):
+            Room.loadRoom(roomName)
+        newRoom=Room.rooms[roomName]
+        newDoor = newRoom.doors[doorName]
+        details = RoomChangeDetails(Room.current, newRoom, oldDoor, newDoor)
+        if (Room.current):
+            Room.current.leavingRoom(details)
+        Room.current=newRoom
+        Room.onRoomChange.invoke(details)
+        newRoom.enteredRoom(details)
     def __init__(self, roomFile: str):
-        self.onRoomChange = RoomChangeEvent()
+        self.onRoomEnter = RoomChangeEvent()
         self.onRoomLeave = RoomChangeEvent()
         self.config = configparser.ConfigParser()
         self.config.read(os.path.join(os.getcwd(), 'Assets', 'Levels',roomFile+'.lvl'))
@@ -112,12 +137,11 @@ class Room:
             position[1] < 0 or position[1] >= self.height):
             return oobReturn #out of bounds return
         return self.walls[position[0]][position[1]]
-    def changedRoom(self):
+    def enteredRoom(self, details):
         self.updateTileCache()
-        Room.onRoomChange.invoke(self)
-        self.onRoomChange.invoke(self)
-    def leavingRoom(self, newRoom):
-        self.onRoomLeave.invoke(newRoom)
+        self.onRoomEnter.invoke(details)
+    def leavingRoom(self, details):
+        self.onRoomLeave.invoke(details)
 
 class Door(e.Actor):
     def __init__(self, name, room, position, collisionBounds, sprite,linkedRoom,linkedDoor,playerOffset):
@@ -131,16 +155,18 @@ class Door(e.Actor):
             self.linkedDoor = None
             self.setActive(False)
         room.doors[self.name]=self
-    def playerStart(self):
-        self.collidingPlayerStart = True
-        e.Player.current.position=self.position + self.playerOffset
+    def getPlayerStartPosition(self):
         #TODO: get player position relative to self, place based on that
         #   make sure to push player away from colliding with self, though
+        return self.position + self.playerOffset
+    def playerStart(self):
+        self.collidingPlayerStart = True
+        e.Player.current.position=self.getPlayerStartPosition()
     def onCollide(self, collision):
         super().onCollide(collision)
         if (collision.collider==e.Player.current): self.triggerLoad()
     def triggerLoad(self):
-        g.GameLoop.changeRoom(self.linkedRoom, self.linkedDoor)
+        Room.changeRoom(self.linkedRoom, self.linkedDoor, oldDoor=self)
     def update(self):
         super().update()
     def draw(self):

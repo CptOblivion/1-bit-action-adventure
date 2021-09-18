@@ -29,6 +29,7 @@ class Entity:
         if (parent):
             self.setParent(parent)
         self.deathTimer=None
+        self.visible=True
     @property
     def position(self):
         return self._globalPosition
@@ -48,7 +49,7 @@ class Entity:
     def setActive(self, state):
         self.active=state
     def draw(self, **kwargs):
-        if (self.active and self.sprite):
+        if (self.active and self.visible and self.sprite):
             self.sprite.draw(self.position+self.origin, **kwargs)
     def update(self):
         if (self.deathTimer is not None):
@@ -319,16 +320,43 @@ class Character(Actor):
             outDict[baseName+'_'+suffixes[i]]=tuple(line)
         return outDict
 
+class PlayerSpawn(Entity):
+    def __init__(self, room, door, **kwargs):
+        super().__init__('playerIntro', room, ('Guy',(112,32,8,16,100)), origin = (-4,-14), **kwargs)
+        self.targetPosition=self.room.doors[door].getPlayerStartPosition()
+        self.offset=250
+        self.introTime=.5
+        self.moveSpeed = 1/self.introTime * self.offset
+        self.position=self.targetPosition - Vector2(0,self.offset)
+        self.startDelay=1.5
+        self.visible=False
+        g.Window.current.shake(12,1,0,.05)
+    def update(self):
+        super().update()
+        if (self.startDelay > 0):
+            self.startDelay -= g.deltaTime
+            if (self.startDelay <= 0):
+                #g.Window.current.bump(0,2,.12)
+                self.visible=True
+        else:
+            self.offset -= self.moveSpeed * g.deltaTime
+            if (self.offset >= 0):
+                self.position = self.targetPosition - Vector2(0,self.offset)
+            else:
+                g.Window.current.shake(6,1,0,.05)
+                player = Player(self.room, position=self.targetPosition)
+                player.spawnLandingImpact()
+                self.destroy()
 class Player(Character):
     #TODO: move to own file
     #controlled by player
     current=None
-    def __init__(self, **kwargs):
+    def __init__(self, room, **kwargs):
         Player.current=self
         collisionBounds = pygame.Rect(-4,-3,8,6)
-        #states: 'normal', 'roll', 'backstep', 'damage', 'rollBounce'
+        #states: 'normal', 'attack', 'roll', 'backstep', 'damage', 'rollBounce'
         self.state='start'
-        self.dodgeTimer = 2.5
+        self.stateTimer = 1.5
         sheetName='Guy'
         playerSheet=pygame.image.load(os.path.join(os.getcwd(), 'Assets','Sprites',sheetName+'.png'))
         w=16
@@ -337,39 +365,57 @@ class Player(Character):
         animDict = {**Character.generateFacingSprites('idle', 0, w,h,.25),
                     **Character.generateFacingSprites('walk',(1,0,2,0),w,h,.08),
                     **Character.generateFacingSprites('dodge',3,w,h,2),
-                    **Character.generateFacingSprites('attack',4,w,h,2),
+                    **Character.generateFacingSprites('attack1',4,w,h,2),
+                    **Character.generateFacingSprites('attack2',5,w,h,2),
                     #for some reason, the first frame (regardless of time) is skipped on spawn
-                    'landing':((0,0,0,0,1),(0,0,0,0,1.5),(96,0,16,16,1),(112,0,16,16,.3),(0,32,16,16,1))
+                    'landing':((0,0,0,0,1),(112,0,16,16,1),(112,16,16,16,.3),(0,32,16,16,1))
                     }
-        super().__init__('player', None, collisionBounds,
+        super().__init__('player', room, collisionBounds,
                        s.Sprite(sheetName, 'landing', states = animDict, sheet=playerSheet),origin=(-8,-15),**kwargs)
+        rm.Room.onRoomChange.add(self.roomChange)
         self.walkSpeed = 100
         self.dodgeSpeed = 350
         self.dodgeSteer = 15
-        self.dodgeTime=.15
+        self.rollTime=.15
         self.backstepTime=.05
+        self.dodgeCooldown=.4
+        self.dodgeCooldownTimer=0
+        self.attackStepSpeed = 40
         self.rollBounceTimeScale=5 #on rolling into an obstacle, stun for this factor of rmaining roll time
         self.rollBounceMinTime = .2 #roll bounce stun will always be at least this long
         self.rollBounceSpeed = 200 #start speed for roll bounce
         self.rollBounceFalloff = 25
         self.moveInputVec = Vector2(0,0)
+        self.inputBufferAttack = .15
+        self.inputBufferDodge = None
+        self.inputBuffer=None
+        self.stateTimer=1.5 #TODO: set the start state with this value via function, instead of using the default value
+        self.nextState='normal'
+        self.canMove=False
+        self.attackString=0
         g.GameLoop.inputEvents['moveUp'].add(self.inputMoveUp)
         g.GameLoop.inputEvents['moveDown'].add(self.inputMoveDown)
         g.GameLoop.inputEvents['moveLeft'].add(self.inputMoveLeft)
         g.GameLoop.inputEvents['moveRight'].add(self.inputMoveRight)
-        g.GameLoop.inputEvents['dodge'].add(self.dodge)
+        g.GameLoop.inputEvents['dodge'].add(self.inputDodge)
         g.GameLoop.inputEvents['attack'].add(self.inputAttack)
         g.GameLoop.inputEvents['debugSpawn'].add(self.inputDebugSpawn)
         self.setCollisionLayer('player')
         bounds=pygame.Rect(-8,-8,16,16)
         center=(-8,-8)
         self.attackOb=DamageBox('playerAttack',self.room,bounds,
-                                s.Sprite('Sword Slash2', 'ortho',states={'ortho':((0,0,16,16,.03),
+                                s.Sprite('Sword Slash2', 'Aortho',states={'Aortho':((0,0,16,16,.03),
                                                                                   (16,0,16,16,.02),
                                                                                   (32,0,16,16,100)),
-                                                                         'diag':((0,16,16,16,.03),
+                                                                         'Adiag':((0,16,16,16,.03),
                                                                                   (16,16,16,16,.02),
-                                                                                  (32,16,16,16,100))}),
+                                                                                  (32,16,16,16,100)),
+                                                                         'Bortho':((0,32,16,16,.03),
+                                                                                  (16,32,16,16,.02),
+                                                                                  (32,32,16,16,100)),
+                                                                         'Bdiag':((0,48,16,16,.03),
+                                                                                  (16,48,16,16,.02),
+                                                                                  (32,48,16,16,100))}),
                                 1,.03,.02,.25,collisionLayer='playerAttack',
                               ghost=True, parent=self, origin=center)
     def draw(self):
@@ -387,7 +433,7 @@ class Player(Character):
             if (self.totalForce.magnitude()>0):
                 force=self.totalForce.normalize()
                 if (self.dodgeVec.dot(force) < -.8):
-                    self.state='rollBounce'
+                    self.setState('rollBounce')
                     g.Window.current.bump(int(force.x*-2),int(force.y*-2),.06)
                     #g.Window.current.shake(5,int(force.x*-1.5),int(force.y*-1.5), .03)
                     dustVec=Vector2(force.y,-force.x)
@@ -395,52 +441,44 @@ class Player(Character):
                     self.spawnDust(-dustVec*200-force*15, count=2)
                     self.facing = collision.force*-1
                     self.dodgeVec = force
-                    self.dodgeTimer = max(self.dodgeTimer*self.rollBounceTimeScale,self.rollBounceMinTime)
+                    self.stateTimer = max(self.stateTimer*self.rollBounceTimeScale,self.rollBounceMinTime)
                     #TODO: make 'stunned' state with 'hurt' sprites but no damage blink
                     self.sprite.setState('idle'+self.getSpriteDirection()) #placeholder sprite
     def move(self, vect, faceMovement=True, overrideAnimation=False):
         Character.move(self, vect)
-    def inputMoveUp(self, state):
-        if (state):
+    def inputMoveUp(self, buttonDown):
+        if (buttonDown):
             self.moveInputVec += Vector2(0,-1)
         else:
             self.moveInputVec -= Vector2(0,-1)
-    def inputMoveDown(self, state):
-        if (state):
+    def inputMoveDown(self, buttonDown):
+        if (buttonDown):
             self.moveInputVec += Vector2(0,1)
         else:
             self.moveInputVec -= Vector2(0,1)
-    def inputMoveLeft(self, state):
-        if (state):
+    def inputMoveLeft(self, buttonDown):
+        if (buttonDown):
             self.moveInputVec += Vector2(-1,0)
         else:
             self.moveInputVec -= Vector2(-1,0)
-    def inputMoveRight(self, state):
-        if (state):
+    def inputMoveRight(self, buttonDown):
+        if (buttonDown):
             self.moveInputVec += Vector2(1,0)
         else:
             self.moveInputVec -= Vector2(1,0)
-    def inputAttack(self, state):
-        if state:
-            if (self.state=='normal' and not self.attackOb.active):
-                #pos = self.position + self.facing.normalize()*8 + Vector2(0,-8)
-                pos = self.facing.normalize()*8 + Vector2(0,-8)
-                self.attackOb.attack(pos, self.facing)
-                self.sprite.setState('attack'+self.getSpriteDirection())
-    def dodge(self, state):
-        if (state):
-            if (self.state=='normal' and not self.attackOb.active):
+    def inputAttack(self, buttonDown):
+        if (buttonDown):
+            self.queueState('attack')
+
+    def inputDodge(self, buttonDown):
+        if (buttonDown):
+            if (self.dodgeCooldownTimer <=0):
+                #self.queueState('dodge')
                 if self.moveInputVec.magnitude() > 0:
-                    self.state='roll'
-                    self.dodgeVec=Vector2(self.moveInputVec.normalize())
-                    self.dodgeTimer=self.dodgeTime
-                    self.sprite.setState('dodge'+self.getSpriteDirection())
-                    self.spawnDust(self.dodgeVec * 500 + Vector2(0,-50), count=3)
+                    self.queueState('roll')
                 else:
-                    self.state='backstep'
-                    self.dodgeVec=Vector2(self.facing.normalize() * -1)
-                    self.dodgeTimer=self.backstepTime
-                    self.spawnDust(self.dodgeVec*150,count=2)
+                    self.queueState('backstep')
+
     def spawnDust(self, vel, count=5, randStr=1):
         if not hasattr(self, 'dustSpriteSheet'):
             self.dustSpriteSheet=s.Sprite.loadSheet('Dust')
@@ -460,40 +498,109 @@ class Player(Character):
             dust.velocity=vel * (1-abs(rand)*ry) + cross*rand*rx
             dust.damping=8
     def spawnLandingImpact(self):
-        impactSprite=Entity('impactEffect',self.room,('Guy',((0,0,0,0,1),(0,0,0,0,1.5),(96,16,16,8,.3),(112,16,16,8),(96,24,16,8))),
+        impactSprite=Entity('impactEffect',self.room,('Guy',(
+            (0,0,0,0,1),(112,48,16,8,.3),(112,64,16,8),(112,72,16,8))),
                             position=self.position, origin=(-8,-4))
-        impactSprite.destroy(time=2.4)
-
-
+        impactSprite.destroy(time=.9)
     def update(self):
         Character.update(self)
         if (self.state=='normal'):
             vec = Vector2(self.moveInputVec)
             if (vec.magnitude() > 0):
                 vec=vec.normalize() * self.walkSpeed
-            lockSprite=(self.attackOb.active)
-            self.go(vec, faceMovement=(not lockSprite), overrideAnimation=lockSprite)
-        elif self.state=='roll' or self.state == 'backstep':
+            self.go(vec)
+        elif (self.state=='roll' or self.state == 'backstep'):
             self.dodgeVec = (self.dodgeVec + (self.moveInputVec * self.dodgeSteer * g.deltaTime)).normalize()
             vec = self.dodgeVec * self.dodgeSpeed
             self.velocity=vec
             self.go(vec, faceMovement=False, overrideAnimation=True)
-            self.dodgeTimer -= g.deltaTime
-            if (self.dodgeTimer <=0):
-                self.state='normal'
-        elif self.state=='rollBounce':
+            self.advanceState()
+        elif (self.state=='rollBounce'):
             vec = self.dodgeVec * self.rollBounceSpeed
             self.dodgeVec *= 1-self.rollBounceFalloff*g.deltaTime
             self.go(vec, faceMovement=False, overrideAnimation=True)
             #self.velocity=vec
-            self.dodgeTimer -= g.deltaTime
-            if (self.dodgeTimer <= 0):
-                self.state='normal'
+            self.advanceState()
+        elif (self.state=='attack'):
+            self.go(self.facing*self.attackStepSpeed, overrideAnimation=True)
+            self.advanceState()
         elif (self.state=='start'):
-                self.dodgeTimer -= g.deltaTime
-                if (self.dodgeTimer <= 0):
-                    self.state='normal'
+            self.advanceState()
         self.totalForce=Vector2()
+        if (self.state != 'roll' or self.state != 'backstep'):
+            self.dodgeCooldownTimer -= g.deltaTime
+    def roomChange(self, details):
+        self.setRoom(details.newRoom)
+        details.newDoor.playerStart()
+    def advanceState(self, overrideNextState=None):
+        self.stateTimer -= g.deltaTime
+        if (self.stateTimer <=0):
+            if (overrideNextState):
+                self.setState(overrideNextState)
+                return
+            if (self.nextState):
+                self.setState(self.nextState)
+                return
+            self.setState('normal') #fallback
+            return
+        if (self.inputBuffer is not None and self.stateTimer <= self.inputBuffer):
+            self.canMove = True
+            self.inputBuffer = None
+    def queueState(self, state):
+        if (self.canMove):
+            if (self.state == 'normal'):
+                self.setState(state)
+                return
+            self.nextState = state
+
+    def setState(self, state):
+        lastState=self.state
+        self.state=state
+        self.nextState='normal'
+        if (state != 'attack'): self.attackString = 0
+        if (state) == 'normal':
+            self.canMove = True
+            self.inputBuffer = None
+        elif (state == 'attack'):
+            self.canMove=False
+            self.inputBuffer = self.inputBufferAttack
+            self.state='attack'
+            if (self.moveInputVec.magnitude()):
+                #TODO: turn 45 degrees towards moveInputVec
+                #   rather than allowing instant about-face between attacks
+                self.facing=Vector2(self.moveInputVec)
+            pos = self.facing.normalize()*8 + Vector2(0,-8)
+            if (self.attackString)==0:
+                self.attackOb.attack(pos, self.facing, attackName='A')
+                self.sprite.setState('attack1'+self.getSpriteDirection())
+                self.attackString=1
+                self.stateTimer=.3
+            else:
+                self.attackOb.attack(pos, self.facing, attackName='B')
+                self.sprite.setState('attack2'+self.getSpriteDirection())
+                self.attackString=0
+                self.stateTimer=.3
+
+        elif (state == 'roll'):
+            self.dodgeVec=Vector2(self.moveInputVec.normalize())
+            self.stateTimer=self.rollTime
+            self.sprite.setState('dodge'+self.getSpriteDirection())
+            self.spawnDust(self.dodgeVec * 500 + Vector2(0,-50), count=3)
+            self.canMove=False
+            self.inputBuffer = self.inputBufferDodge
+            self.dodgeCooldownTimer = self.dodgeCooldown
+        elif (state == 'backstep'):
+            self.dodgeVec=Vector2(self.facing.normalize() * -1)
+            self.stateTimer=self.backstepTime
+            self.sprite.setState('idle'+self.getSpriteDirection())
+            self.spawnDust(self.dodgeVec*150,count=2)
+            self.canMove=False
+            self.inputBuffer = self.inputBufferDodge
+            self.dodgeCooldownTimer = self.dodgeCooldown
+        else:
+            #fallback
+            self.canMove=False
+            self.inputBuffer = None
 
 class DamageBox(Actor):
     def __init__(self, name, room, collisionBounds, sprite, damage,
@@ -514,14 +621,14 @@ class DamageBox(Actor):
         self.surface=pygame.Surface((self.sprite.currentSprite.width,self.sprite.currentSprite.height),
                                    flags=pygame.SRCALPHA)
         #TODO: collision mask
-    def attack(self, position, facingVec):
+    def attack(self, position, facingVec, attackName=''):
         self.setActive(True)
         self.position=position
         self.rotation=degrees(atan2(facingVec[0],facingVec[1]))+180
         self.rotation=int(self.rotation/45)
         #self.diag=self.rotation%2
-        if (self.rotation%2): self.sprite.setState('diag', restart=True)
-        else: self.sprite.setState('ortho', restart=True)
+        if (self.rotation%2): self.sprite.setState(attackName+'diag', restart=True)
+        else: self.sprite.setState(attackName+'ortho', restart=True)
         self.rotation=int(self.rotation/2)*90
         if (self.windupTime):
             self.timer=self.windupTime

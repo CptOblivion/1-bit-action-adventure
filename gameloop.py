@@ -44,9 +44,10 @@ class GameLoop:
                 GameLoop.inputEvents[val] = ev.InputEvent()
         
         game.window = Window()
-        player=ent.Player()
-        GameLoop.changeRoom('StartRoom', 'start')
-        player.spawnLandingImpact()
+        #player=ent.Player()
+        rm.Room.changeRoom('StartRoom', 'start')
+        ent.PlayerSpawn(rm.Room.current, 'start')
+        #player.spawnLandingImpact()
         GameLoop.lastTime = datetime.datetime.now()
         
     def updateDeltaTime():
@@ -55,21 +56,6 @@ class GameLoop:
         deltaTime=(time-GameLoop.lastTime).microseconds / 1000000
         GameLoop.lastTime=time
 
-    def loadRoom(roomName):
-        print('loading room ',roomName)
-        #TODO: learn about how to trigger garbage collection (and ensure the previous room is properly flushed)
-        GameLoop.rooms[roomName] = rm.Room(roomName)
-    def changeRoom(roomName, doorName):
-        #print('moving to room ', roomName, ' at door ', doorName)
-        if (not roomName in GameLoop.rooms):
-            GameLoop.loadRoom(roomName)
-        newRoom=GameLoop.rooms[roomName]
-        if (rm.Room.current):
-            rm.Room.current.leavingRoom(newRoom)
-        rm.Room.current=newRoom
-        ent.Player.current.setRoom(newRoom)
-        newRoom.doors[doorName].playerStart()
-        newRoom.changedRoom()
 
     def quit(game):
         print('quitting')
