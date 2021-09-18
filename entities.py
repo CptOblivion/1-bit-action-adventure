@@ -84,7 +84,6 @@ class Entity:
         parent.children.append(self)
         self.parent=self._parent = parent
         
-        print('setting ',self.name,'parent to ', parent.name,'. childlist:',parent.children)
         #self.position -= parent.position
         #print('changed ', self.name, "'s parent to ", self.parent, '. New siblings (plus self): ', self.parent.children)
 
@@ -393,6 +392,8 @@ class Player(Character):
         self.nextState='normal'
         self.canMove=False
         self.attackString=0
+        g.GameLoop.inputEvents['moveX'].add(self.inputMoveX)
+        g.GameLoop.inputEvents['moveY'].add(self.inputMoveY)
         g.GameLoop.inputEvents['moveUp'].add(self.inputMoveUp)
         g.GameLoop.inputEvents['moveDown'].add(self.inputMoveDown)
         g.GameLoop.inputEvents['moveLeft'].add(self.inputMoveLeft)
@@ -446,6 +447,11 @@ class Player(Character):
                     self.sprite.setState('idle'+self.getSpriteDirection()) #placeholder sprite
     def move(self, vect, faceMovement=True, overrideAnimation=False):
         Character.move(self, vect)
+    def inputMoveX(self, value):
+        #TODO: this won't mix with button-based input movements at all
+        self.moveInputVec.x = value
+    def inputMoveY(self, value):
+        self.moveInputVec.y = -value
     def inputMoveUp(self, buttonDown):
         if (buttonDown):
             self.moveInputVec += Vector2(0,-1)
@@ -609,7 +615,6 @@ class DamageBox(Actor):
     def __init__(self, name, room, collisionBounds, sprite, damage,
                  windupTime,damageTime,remainTime, collisionLayer='monsterAttack', **kwargs):
         super().__init__(name, room, collisionBounds,sprite, **kwargs)
-        print('damage box added, but not yet implemented')
         self.ghost=True
         self.noCollideWalls = True
         self.setActive(False)

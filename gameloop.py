@@ -7,21 +7,29 @@ import room as rm
 import entities as ent
 import event as ev
 
+#TODO: use pygame.time instead of doing our own deltatime
 deltaTime=100
+controllers=[]
 class GameLoop:
     lastTime=None
     rooms={}
     #TODO: make Level class to wrap a bunch of rooms together
     #gameloop can store  a list of levels, move this rooms dict into Level
     def __init__(game):
+        global controllers
         GameLoop.current=game
         game.running = True
         pygame.init()
+        pygame.joystick.init()
+        controllers.clear()
+        #for i in range(pygame.joystick.get_count()):
+        #    controllers.append(pygame.joystick.Joystick(i))
+        #controllers=
         pygame.display.set_caption("C'est Une Sword")
         pygame.display.set_icon(pygame.image.load(os.path.join(os.getcwd(), 'Assets','Icon.png')))
         #TODO: some system so multiple bindings to the same action don't trip the action multiple times
         #maybe a go-between class that uses 'or' on all the inputs, and triggers on edges
-        GameLoop.mapping ={
+        GameLoop.mappingDigital ={
             pygame.locals.K_w:'moveUp',
             pygame.locals.K_UP:'moveUp',
             pygame.locals.K_s:'moveDown',
@@ -32,14 +40,24 @@ class GameLoop:
             pygame.locals.K_RIGHT:'moveRight',
             pygame.locals.K_x:'dodge',
             pygame.locals.K_LSHIFT:'dodge',
+            'controllerButton0':'dodge',
             pygame.locals.K_z:'attack',
             pygame.locals.K_SPACE:'attack',
+            'controllerButton2':'attack',
             pygame.locals.K_f:'debugDisplay',
             pygame.locals.K_c:'debugChart',
             pygame.locals.K_v:'debugSpawn'}
+        GameLoop.mappingAnalog = {
+            'controllerHatX':'moveX',
+            'controllerHatY':'moveY',
+            }
         GameLoop.inputEvents={}
-        for key in GameLoop.mapping:
-            val=GameLoop.mapping[key]
+        for key in GameLoop.mappingDigital:
+            val=GameLoop.mappingDigital[key]
+            if (not val in GameLoop.inputEvents):
+                GameLoop.inputEvents[val] = ev.InputEvent()
+        for key in GameLoop.mappingAnalog:
+            val = GameLoop.mappingAnalog[key]
             if (not val in GameLoop.inputEvents):
                 GameLoop.inputEvents[val] = ev.InputEvent()
         
@@ -79,7 +97,8 @@ class GameLoop:
                     else: remainder.y=-1
                     for x in range(0,2):
                         for y in range(0,2):
-                            wall = rm.Room.current.getWall((int(cellIndex.x + remainder.x*x), int(cellIndex.y + remainder.y*y)))
+                            wall = rm.Room.current.getWall((int(cellIndex.x + remainder.x*x),
+                                                            int(cellIndex.y + remainder.y*y)))
                             if(wall and wall.wall): wall.collide(actor)
         while len(testActors) > 1:
             actor=testActors.pop(0)
@@ -87,6 +106,32 @@ class GameLoop:
                 actor.gameloopCollision(actor2)
         for actor in rm.Room.current.actors:
             actor.afterPhysics()
+    
+    def addController(event):
+        index=event.device_index
+        print('controller ', index, ' connected: ')
+        joystick = pygame.joystick.Joystick(index)
+        if (len(controllers) < index+1):
+            controllers.append(joystick)
+        else:
+            controllers[index] = joystick
+        print(controllers)
+        #guid
+    def removeController(event):
+        index = event.instance_id
+        print('controller ',index,' disconnected')
+        controllers[index].quit()
+        controllers[index] = None
+    def controllerButtonInput(event, buttonDown):
+        #print('controller button: ', event)
+        key='controllerButton'+str(event.button)
+        if (key in GameLoop.mappingDigital):
+            GameLoop.inputEvents[GameLoop.mappingDigital[key]].invoke(buttonDown)
+    def controllerHatMotion(event):
+        if ('controllerHatX' in GameLoop.mappingAnalog):
+            GameLoop.inputEvents[GameLoop.mappingAnalog['controllerHatX']].invoke(event.value[0])
+        if ('controllerHatY' in GameLoop.mappingAnalog):
+            GameLoop.inputEvents[GameLoop.mappingAnalog['controllerHatY']].invoke(event.value[1])
     def main(game):
         while game.running:
             GameLoop.updateDeltaTime()
@@ -96,11 +141,22 @@ class GameLoop:
                 elif event.type== locals.KEYDOWN:
                     if event.key == locals.K_ESCAPE:
                         game.quit()
-                    elif event.key in GameLoop.mapping:
-                        GameLoop.inputEvents[GameLoop.mapping[event.key]].invoke(True)
+                    elif event.key in GameLoop.mappingDigital:
+                        GameLoop.inputEvents[GameLoop.mappingDigital[event.key]].invoke(True)
                 elif event.type== locals.KEYUP:
-                    if event.key in GameLoop.mapping:
-                        GameLoop.inputEvents[GameLoop.mapping[event.key]].invoke(False)
+                    if event.key in GameLoop.mappingDigital:
+                        GameLoop.inputEvents[GameLoop.mappingDigital[event.key]].invoke(False)
+                elif event.type == locals.JOYBUTTONDOWN:
+                    GameLoop.controllerButtonInput(event, True)
+                elif event.type == locals.JOYBUTTONUP:
+                    GameLoop.controllerButtonInput(event, False)
+                elif event.type == locals.JOYHATMOTION:
+                    GameLoop.controllerHatMotion(event)
+                elif event.type == locals.JOYDEVICEADDED:
+                    GameLoop.addController(event)
+                elif event.type == locals.JOYDEVICEREMOVED:
+                    GameLoop.removeController(event)
+
             game.update()
             game.physics()
             rm.Room.current.draw()
@@ -131,7 +187,8 @@ class Window:
         self.bumpTime=0
         self.shakeCount=0
         self.shakeTime=0
-        #TODO: screenflash removed because epillepsy, but check if it's bad on a tiny not-backlit handheld later
+        #TODO: screenflash removed because epillepsy,
+        #   but check if it's bad on a tiny not-backlithandheld later
     def initializeFramerates(self):
         self.weightedFramerateCount=100
         framerates=[]
@@ -149,7 +206,8 @@ class Window:
             for f in Window.framerates:
                 framerate += f
             framerate /= self.weightedFramerateCount
-            #TODO: start with an empty list, just overwrite when at length (average won't creep up from 0 at start, that way)
+            #TODO: start with an empty list, just overwrite when at length
+            #   (average won't creep up from 0 at start, that way)
             #TODO: maybe just track a position and overwrite that index, instead of deleting and appending
             if (self.drawChart):
                 #costs a few frames on its own
@@ -159,7 +217,8 @@ class Window:
                 self.frameChart.fill((0,255,0,128), pygame.Rect(0,h-f, 1, f))
                 self.frameChart.fill((0,0,255,128), pygame.Rect(0,h-framerate+2, 1, 4))
                 self.actualScreen.blit(self.frameChart, (0,0))
-            self.actualScreen.blit(self.font.render(str(int(framerate)), False, (0,255,0)), (5*self.mult,5*self.mult))
+            self.actualScreen.blit(self.font.render(str(int(framerate)), False, (0,255,0)),
+                                   (5*self.mult,5*self.mult))
     def flip(self):
         self.doEffects()
         pygame.transform.scale(self.screen,self.screenSize,self.actualScreen)
