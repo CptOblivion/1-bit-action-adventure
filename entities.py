@@ -504,18 +504,21 @@ class Player(Character):
         impactSprite.destroy(time=.9)
     def update(self):
         Character.update(self)
+        updateDodgeDelay = True
         if (self.state=='normal'):
             vec = Vector2(self.moveInputVec)
             if (vec.magnitude() > 0):
                 vec=vec.normalize() * self.walkSpeed
             self.go(vec)
         elif (self.state=='roll' or self.state == 'backstep'):
+            updateDodgeDelay=False
             self.dodgeVec = (self.dodgeVec + (self.moveInputVec * self.dodgeSteer * g.deltaTime)).normalize()
             vec = self.dodgeVec * self.dodgeSpeed
             self.velocity=vec
             self.go(vec, faceMovement=False, overrideAnimation=True)
             self.advanceState()
         elif (self.state=='rollBounce'):
+            updateDodgeDelay=False
             vec = self.dodgeVec * self.rollBounceSpeed
             self.dodgeVec *= 1-self.rollBounceFalloff*g.deltaTime
             self.go(vec, faceMovement=False, overrideAnimation=True)
@@ -527,7 +530,7 @@ class Player(Character):
         elif (self.state=='start'):
             self.advanceState()
         self.totalForce=Vector2()
-        if (self.state != 'roll' or self.state != 'backstep'):
+        if (updateDodgeDelay):
             self.dodgeCooldownTimer -= g.deltaTime
     def roomChange(self, details):
         self.setRoom(details.newRoom)
