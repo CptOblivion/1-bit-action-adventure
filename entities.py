@@ -108,8 +108,8 @@ class Actor(Entity):
             self.collidingObType=collidingObType
             self.force = force
     #has collision
-    def __init__(self, name, room, collisionBounds, sprite, ghost=False, **kwargs):
-        self.collisionLayer=1
+    def __init__(self, name, room, collisionBounds, sprite, ghost=False,collisionLayer=1, **kwargs):
+        self.collisionLayer=collisionLayer
         #weird fake initializations so the position and collisionBound setters won't complain later
         self._globalPosition=Vector2()
         self.collisionBounds=pygame.Rect(0,0,0,0)
@@ -169,9 +169,10 @@ class Actor(Entity):
         else: self.collisionLayer = Actor.collisionLayerNames[layer]
     def takeDamage(self, damage, fromActor):
         if (not self.skipDamage and self.damageICounter <=0):
-            self.damageICounter=self.damageITime
             self.health -= damage
-            if self.health <= 0: self.onDeath()
+            if self.health <= 0:
+                self.onDeath()
+                return
             self.damageICounter=self.damageITime
             self.setCollisionLayer('hitStun')
     def onDeath(self):
@@ -766,6 +767,7 @@ class NPC(Character):
         self.sleepRange=150
         self.actionRange=16
         self.leaveActionRange=32
+        self.collisionLayerAlive=self.collisionLayer
         if (leaveRoomFunc == 'reset'): self.onRoomChange=self.reset
         elif (leaveRoomFunc == 'sleep'): self.onRoomChange=self.sleep
         elif (leaveRoomFunc == 'respawn'): self.onRoomChange=self.respawn
@@ -785,6 +787,8 @@ class NPC(Character):
         self.setAIState('alive') #placeholder state to make sure we're not set as dead
         #change sprite
         self.reset(roomChangeDetails)
+        self.setCollisionLayer(self.collisionLayerAlive)
+        self.noCollide=False
     def sleep(self, roomChangeDetails):
         self.setAIState('sleep')
     def destroy(self):
@@ -795,6 +799,16 @@ class NPC(Character):
         self.AIState=state
     def getVectTo(self, actor):
         return (actor.position - self.position)
+    def takeDamage(self, damage, fromActor):
+        super().takeDamage(damage, fromActor)
+    def onDeath(self):
+        super().onDeath()
+        self.velocity=Vector2()
+        self.noCollide=True
+        self.setAIState('dead')
+        self.sprite.setState('dead')
+        #TODO: disappears on death, instead of showing dead sprite
+        #   maybe sprite is set wrong? maybe physics go weird? print position or something I dunno
     def update(self):
         super().update()
         if (not Player.current): pass
@@ -835,8 +849,10 @@ def Spawn(entityName, room, position):
         h=16
         #placeholder until I have an actual spawning system
         animDict={**Character.generateFacingSprites('idle', 0, w,h,.25),
-                  **Character.generateFacingSprites('walk', 0, w,h,.25)}
+                  **Character.generateFacingSprites('walk', 0, w,h,.25),
+                  'dead':(48,0,16,16,100)}
 
         slime=NPC('slime', room, pygame.Rect(-8,-12,16,16), s.Sprite('Slime', 'idle_01', states=animDict),
-                 None, 'follow', None, leaveRoomFunc='reset', position=position, origin=(-8,-12))
-        slime.collisionLayer = 2
+                 None, 'follow', None, leaveRoomFunc='reset', position=position, origin=(-8,-12),
+                 collisionLayer=2)
+        slime.skipDamage=False
