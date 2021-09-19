@@ -108,6 +108,10 @@ class Room:
 
             roomDoor=Door(doorName,self,position,bounds,None,linkedRoom,linkedDoor,playerOffset)
 
+        for key in self.config['Entities']:
+            posX, posY=self.config['Entities'][key].split(',')
+            e.Spawn(key, self, Vector2(int(posX),int(posY)))
+
     def updateTileCache(self):
         for x in range(self.width):
             for y in range(self.height):

@@ -60,10 +60,14 @@ class Sprite:
             if (not startState in states):
                 raise IndexError('startState '+startState+' not in states!')
             self.currentState = states[startState]
+            self.startState=startState
         else:
             self.states['start'] = self.currentState = Sprite.initState(startState)
+            self.startState='start'
         
         self.currentSprite=self.currentState.activate().rect
+    def resetState(self):
+        self.setState(self.startState, restart=True)
 
     def initState(state):
         if (type(state)==list or type(state)==tuple):

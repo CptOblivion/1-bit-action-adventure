@@ -280,7 +280,6 @@ class Actor(Entity):
         
 class Character(Actor):
     def __init__(self, name, room, collisionBounds, sprite, **kwargs):
-        room=rm.Room.current
         self.facing=Vector2(0,1)
         self.totalForce = Vector2(0,0)
         reqStates=('idle_-1-1', 'idle_0-1', 'idle_1-1', 'idle_-10', 'idle_10', 'idle_-11', 'idle_01', 'idle_11',
@@ -302,16 +301,19 @@ class Character(Actor):
             self.sprite.setState(anim)
     def getSpriteDirection(self):
         facing=[0,0]
-        if (self.facing.x > 0): facing[0] = 1
-        elif (self.facing.x < 0): facing[0] = -1
-        if (self.facing.y > 0): facing[1] = 1
-        elif (self.facing.y < 0): facing[1] = -1
+        nor=self.facing.normalize()
+
+        #.707 is the 45 degree angles on a vector, .487 is eighth-wedges between those and orthogonal
+        if (nor.x > .487): facing[0] = 1
+        elif (nor.x < -.487): facing[0] = -1
+        if (nor.y > .487): facing[1] = 1
+        elif (nor.y < -.487): facing[1] = -1
         return '_'+str(facing[0])+str(facing[1])
     def generateFacingSprites(baseName,columns,w,h,t):
         if (type(columns)==int):
             columns=(columns,)
         outDict={}
-        suffixes=('10','11','01','-11','-10','-1-1','0-1','1-1')
+        suffixes=('01','11','10','1-1','0-1','-1-1','-10','-11')
         for i in range(8):
             line=[]
             for col in columns:
@@ -372,7 +374,7 @@ class Player(Character):
                     **Character.generateFacingSprites('attack1',4,w,h,2),
                     **Character.generateFacingSprites('attack2',5,w,h,2),
                     #for some reason, the first frame (regardless of time) is skipped on spawn
-                    'landing':((0,0,0,0,1),(112,0,16,16,1),(112,16,16,16,.3),(0,32,16,16,1))
+                    'landing':((0,0,0,0,1),(112,0,16,16,1),(112,16,16,16,.3),(0,0,16,16,1))
                     }
         super().__init__('player', room, collisionBounds,
                        s.Sprite(sheetName, 'landing', states = animDict, sheet=playerSheet),origin=(-8,-15),**kwargs)
@@ -382,7 +384,7 @@ class Player(Character):
         self.dodgeSteer = 15
         self.rollTime=.15
         self.backstepTime=.05
-        self.dodgeCooldown=.3
+        self.dodgeCooldown=.1
         self.dodgeCooldownTimer=0
         self.attackStepSpeed = 40
         self.rollBounceTimeScale=5 #on rolling into an obstacle, stun for this factor of rmaining roll time
@@ -510,7 +512,7 @@ class Player(Character):
             dust.velocity=vel * (1-abs(rand)*ry) + cross*rand*rx
             dust.damping=8
     def update(self):
-        Character.update(self)
+        super().update()
         updateDodgeDelay = True
         if (self.state=='normal'):
             vec = Vector2(self.moveInputVec)
@@ -747,3 +749,94 @@ class Crate(Actor):
     def returnFromDamage(self):
         super().returnFromDamage()
         self.sprite.setState('normal')
+class NPC(Character):
+    def __init__(self, name, room, collisionBounds, sprite, behaviorIdle, behaviorAwake, behaviorAction,
+                 leaveRoomFunc = 'reset', **kwargs):
+        super().__init__(name, room, collisionBounds, sprite, **kwargs)
+        self.startPosition=Vector2(self.position)
+        self.startHealth=self.health
+        #idle behaviors: patrol, wander, None
+        #awake behaviors: follow, guard, None
+        #behaviors when in range: charge, lurk (keep distance and occasionally attack), scatter, None
+        self.behaviorIdle=behaviorIdle
+        self.behaviorAwake=behaviorAwake
+        self.behaviorAction=behaviorAction
+        self.AIState='idle'
+        self.wakeupRange=100
+        self.sleepRange=150
+        self.actionRange=16
+        self.leaveActionRange=32
+        if (leaveRoomFunc == 'reset'): self.onRoomChange=self.reset
+        elif (leaveRoomFunc == 'sleep'): self.onRoomChange=self.sleep
+        elif (leaveRoomFunc == 'respawn'): self.onRoomChange=self.respawn
+        self.room.onRoomLeave.add(self.onRoomChange)
+
+        self.moveSpeed=20
+
+    def reset(self, roomChangeDetails):
+        if (self.active and self.AIState!='dead'):
+            self.position=Vector2(self.startPosition)
+            self.health=self.startHealth
+            self.setAIState('idle')
+            self.facing = Vector2(0,1)
+            #self.sprite.resetState()
+    def respawn(self, roomChangeDetails):
+        self.active=True
+        self.setAIState('alive') #placeholder state to make sure we're not set as dead
+        #change sprite
+        self.reset(roomChangeDetails)
+    def sleep(self, roomChangeDetails):
+        self.setAIState('sleep')
+    def destroy(self):
+        self.room.onRoomLeave.remove(self.onRoomChange)
+        super().destroy()
+    def setAIState(self, state):
+        #function so we can trigger stuff on state change if need be
+        self.AIState=state
+    def getVectTo(self, actor):
+        return (actor.position - self.position)
+    def update(self):
+        super().update()
+        if (not Player.current): pass
+        vec = self.getVectTo(Player.current)
+        dist=vec.magnitude()
+        if (self.AIState=='idle'):
+            if (dist < self.wakeupRange):
+                self.setAIState('awake')
+                return
+            self.go(Vector2())
+        elif (self.AIState == 'awake'):
+            if (dist <=self.actionRange):
+                self.setAIState('act')
+                return
+            if (dist > self.sleepRange):
+                self.setAIState('idle')
+                return
+            if (self.behaviorAwake == 'follow'):
+                self.go(vec.normalize()*self.moveSpeed)
+                return
+            self.go(Vector2())
+        elif (self.AIState == 'act'):
+            if (dist > self.sleepRange):
+                self.setAIState('idle')
+                return
+            if (dist > self.leaveActionRange):
+                self.setAIState('act')
+                return
+            self.go(Vector2())
+        else:
+            #fallback
+            pass
+
+def Spawn(entityName, room, position):
+    if (entityName=='slime'):
+        #TODO: move default sprite generation into init for NPC (with some settings)
+        w=16
+        h=16
+        #placeholder until I have an actual spawning system
+        animDict={**Character.generateFacingSprites('idle', 0, w,h,.25),
+                  **Character.generateFacingSprites('walk', 0, w,h,.25)}
+
+        slime=NPC('slime', room, pygame.Rect(-8,-12,16,16), s.Sprite('Slime', 'idle_01', states=animDict),
+                 None, 'follow', None, leaveRoomFunc='reset', position=position, origin=(-8,-12))
+        slime.collisionLayer = 2
