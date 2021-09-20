@@ -827,24 +827,25 @@ class NPC(Character):
             self.position=Vector2(self.startPosition)
             self.health=self.startHealth
             self.setAIState('sleep')
+            self.sprite.setState('default')
             self.facing = Vector2(0,1)
             #self.sprite.resetState()
     def respawn(self, roomChangeDetails):
         self.active=True
         self.setAIState('alive') #placeholder state to make sure we're not set as dead
-        #change sprite
         self.reset(roomChangeDetails)
         self.setCollisionLayer(self.collisionLayerAlive)
         self.noCollide=False
     def sleep(self, roomChangeDetails):
         self.setAIState('sleep')
+        self.sprite.setState('default')
     def destroy(self):
         self.room.onRoomLeave.remove(self.onRoomChange)
         super().destroy()
     def setAIState(self, state):
-        #function so we can trigger stuff on state change if need be
         self.AIState=state
         if (state == 'sleep'):
+
             self.velocity=Vector2()
             self.sprite.setState('sleep')
         elif (state == 'wakeup'):
@@ -852,16 +853,12 @@ class NPC(Character):
             self.sprite.setState('wakeup')
     def getVectTo(self, actor):
         return (actor.position - self.position)
-    #def takeDamage(self, damage, fromActor, force):
-    #    super().takeDamage(damage, fromActor, force)
     def onDeath(self):
         super().onDeath()
         self.velocity=Vector2()
         self.noCollide=True
         self.setAIState('dead')
         self.sprite.setState('dead')
-        #TODO: disappears on death, instead of showing dead sprite
-        #   maybe sprite is set wrong? maybe physics go weird? print position or something I dunno
     def onCollide(self, collision):
         super().onCollide(collision)
         if (self.AIState != 'hurt' and collision.collider == Player.current):
@@ -871,12 +868,18 @@ class NPC(Character):
         super().returnFromDamage()
         self.setAIState('awake')
     def takeDamage(self, damage, fromActor, force):
-        super().takeDamage(damage, fromActor, force)
+        if (super().takeDamage(damage, fromActor, force)):
+            return True
         self.setAIState('hurt')
     def update(self):
         super().update()
         if (not Player.current): pass
-        if (not self.AIState == 'dead'):
+        if (self.AIState != 'dead'):
+            if (Player.current.state=='dead'):
+                if (self.AIState != 'sleep'):
+                    print(self.AIState)
+                    self.setAIState('sleep')
+                return
             vec = self.getVectTo(Player.current)
             dist=vec.magnitude()
         if (self.AIState=='sleep'):
@@ -912,18 +915,19 @@ class NPC(Character):
             pass
 
 def Spawn(entityName, room, position):
+    #TODO: placeholder until I have an actual spawning system
     if (entityName=='Slime'):
         #TODO: move default sprite generation into init for NPC (with some settings)
         w=16
         h=16
-        #placeholder until I have an actual spawning system
         animDict={**Character.generateFacingSprites('idle', 0, w,h,.25),
                   **Character.generateFacingSprites('walk', 0, w,h,.25),
-                  'sleep':(48,16,16,16),
-                  'wakeup':((48,32,16,16,.3),(0,64,16,16),(0,0,16,16),'noLoop'),
-                  'dead':((48,32,16,16,.5),(48,0,16,16),'noLoop')}
+                  'sleep':((0,64,16,16,.3),(48,16,16,16),(48,0,16,16),'noLoop'),
+                  'wakeup':((48,16,16,16,.3),(0,64,16,16),(0,0,16,16),'noLoop'),
+                  'default':(48,0,16,16),
+                  'dead':((48,32,16,16,.5),(48,48,16,16),'noLoop')}
 
-        slime=NPC('slime', room, pygame.Rect(-8,-12,16,16), s.Sprite('Slime', 'sleep', states=animDict),
+        slime=NPC('slime', room, pygame.Rect(-8,-12,16,16), s.Sprite('Slime', 'default', states=animDict),
                  None, 'follow', None, leaveRoomFunc='respawn', position=position, origin=(-8,-12),
                  health=5, collisionLayer=2)
         slime.skipDamage=False
