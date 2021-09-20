@@ -1,0 +1,35 @@
+[General]
+tileset:Tileset.png
+tilsize:16
+floors:
+	0,Sand,6,0
+	32,MushroomFloor,6,1
+	48,Tile,9,0
+	64,CrackedFloor,9,1
+walls:
+	255,NormalWall,6,0,32
+entities:
+	slime,junkData
+[StartRoom]
+entities:
+doors:
+	B,18,15,2,1,U,Chapel,TR
+	Start,12,8,1,1,U,None,None
+	
+[Chapel]
+entities:
+	Slime,100,100
+	Slime,200,50
+	Slime,90,60
+doors:
+	TL,5,-1,2,1,D,CaveHall,B
+	TR,18,-1,2,1,D,StartRoom,B
+[CaveHall]
+entities:
+doors:
+	B,5,15,2,1,U,Chapel,TL
+	R,25,5,1,3,L,CaveRoots,L
+[CaveRoots]
+entities:
+doors:
+	L,-1,5,1,3,R,CaveHall,R

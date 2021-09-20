@@ -46,6 +46,7 @@
     <Content Include="Assets\Levels\Chapel.png" />
     <Content Include="Assets\Levels\StartRoom.lvl" />
     <Content Include="Assets\Levels\StartRoom.png" />
+    <Content Include="Assets\Levels\TestZone.lvl" />
     <Content Include="Assets\Sprites\Dust.png" />
     <Content Include="Assets\Sprites\Guy.png" />
     <Content Include="Assets\Sprites\Sword Slash.png" />

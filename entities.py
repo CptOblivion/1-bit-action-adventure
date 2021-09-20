@@ -89,18 +89,18 @@ class Entity:
 
 class Actor(Entity):
     collisionLayerNames={'default':1,'monsters':2,'player':3,'breakables':4,
-                         'monsterAttack':5,'playerAttack':6,'hitStun':7,'dodgeroll':8}
+                         'monsterAttack':5,'playerAttack':6,'iFrames':7,'unused':8}
     #reminder: the bits are in right-to-left order 
     #TODO: easier function to set masks (and make sure their complement is also set)
     collisionMask=[0,
-                   0b11001111, #default
-                   0b01101101, #monsters
-                   0b01011111, #player
-                   0b11111111, #breakables
+                   0b01001111, #default
+                   0b00101101, #monsters
+                   0b00011111, #player
+                   0b01111111, #breakables
                    0b00001100, #monsterAttack
                    0b00001010, #playerAttack
-                   0b10001111, #hitstun
-                   0b01001001] #dodgeroll
+                   0b00001001, #iFrames
+                   0b00000000] #unused
     class Collision:
         def __init__(self, collider, force, collidingObType):
             #collidingObTypes:'floor', 'wall', 'actor'
@@ -166,20 +166,23 @@ class Actor(Entity):
         """
         return self._localCollisionBounds.move(self._globalPosition+self.velocity*g.deltaTime)
     def setCollisionLayer(self,layer):
+        if (type(layer) == str): layer = Actor.collisionLayerNames[layer]
+        if (not layer or layer == self.collisionLayer):
+            return
         self.collisionLayerLast=self.collisionLayer
-        if (type(layer)==int): self.collisionLayer=layer
-        else: self.collisionLayer = Actor.collisionLayerNames[layer]
+        self.collisionLayer=layer 
     def takeDamage(self, damage, fromActor, force):
         if (not self.skipDamage and self.damageICounter <=0):
             self.velocity = force
             self.health -= damage
             if self.health <= 0:
                 self.onDeath()
-                return
+                return True
             self.damageICounter=self.damageITime
-            self.collisionLayerLast=self.collisionLayer
-            self.setCollisionLayer('hitStun')
+            self.setCollisionLayer('iFrames')
             self.damageFlickerTimer=self.damageFlicker
+    def returnFromDamage(self):
+        self.setCollisionLayer(self.collisionLayerLast)
     def onDeath(self):
         pass
     def setRoom(self, room):
@@ -244,8 +247,6 @@ class Actor(Entity):
     def onCollide(self, collision):
         if (self.debugCollider):
             self.debugCollider = (255,0,0)
-    def returnFromDamage(self):
-        pass
     def update(self):
         super().update()
         if (self.damageICounter>0):
@@ -257,7 +258,6 @@ class Actor(Entity):
             if (self.damageICounter <=0):
                 self.visible=True
                 self.returnFromDamage()
-                self.setCollisionLayer(self.collisionLayerLast)
         if (self.debugCollider): self.debugCollider=(0,255,0)
     def __collideTest__(ownBounds, actor, applyForce, skipTest=False):
         collisionBox=actor.getBoundsAfterPhysics()
@@ -385,7 +385,8 @@ class Player(Character):
                     **Character.generateFacingSprites('attack1',4,w,h,2),
                     **Character.generateFacingSprites('attack2',5,w,h,2),
                     #for some reason, the first frame (regardless of time) is skipped on spawn
-                    'landing':((0,0,0,0,1),(112,0,16,16,1),(112,16,16,16,.3),(0,0,16,16,1))
+                    'landing':((0,0,0,0,1),(112,0,16,16,1),(112,16,16,16,.3),(0,0,16,16,1)),
+                    'dead':(112,88,16,16,100)
                     }
         super().__init__('player', room, collisionBounds,
                        s.Sprite(sheetName, 'landing', states = animDict, sheet=playerSheet), origin=(-8,-15),
@@ -498,14 +499,21 @@ class Player(Character):
         if (buttonDown):
             self.queueState('attack')
     def takeDamage(self, damage, fromActor, force):
-        super().takeDamage(damage, fromActor, force)
+        if (super().takeDamage(damage, fromActor, force)):
+            return True
         self.setState('damageStun')
-        self.sprite.setState('idle'+self.getSpriteDirection()) #placeholder sprite
-        self.attackOb.setActive(False)
+        #TODO: for some reason, this can trigger a bunch of frames in a row (despite there should be no
+        #   collision mask interaction)
+        #   because of iFrames no extra damage is dealt, but clearly the mask isn't working or something
+        print('player damage! Health: ', self.health)
         #TODO: set hurt animation
-    #def returnFromDamage(self):
-    #    super().returnFromDamage()
-    #    self.setState('normal')
+    def returnFromDamage(self):
+        super().returnFromDamage()
+        #TODO: when damaged and dodgerolling, whichever ends first will return from iframes
+    def onDeath(self):
+        print('you died to death')
+        self.setState('dead')
+        super().onDeath()
     def inputDodge(self, buttonDown):
         if (buttonDown):
             if (self.dodgeCooldownTimer <=0):
@@ -563,6 +571,8 @@ class Player(Character):
             self.advanceState()
         elif (self.state=='damageStun'):
             self.advanceState()
+        elif (self.state=='dead'):
+            pass
         else:
             pass
         self.totalForce=Vector2()
@@ -594,7 +604,8 @@ class Player(Character):
 
     def setState(self, state):
         lastState=self.state
-        if (lastState == 'roll' or lastState == 'backstep'):
+        if ((lastState == 'roll' or lastState == 'backstep') and self.damageICounter <=0):
+            #after dodge, don't return from iFrames if we're still doing damage iFrames
             self.setCollisionLayer('player')
         self.state=state
         self.nextState='normal'
@@ -621,14 +632,20 @@ class Player(Character):
                 self.sprite.setState('attack2'+self.getSpriteDirection())
                 self.attackString=0
                 self.stateTimer=.3
-
         elif (state == 'roll'):
-            self.dodgeVec=Vector2(self.moveInputVec.normalize())
+            if (self.moveInputVec.magnitude()>0):
+                self.dodgeVec=Vector2(self.moveInputVec.normalize())
+            else: 
+                self.dodgeVec=Vector2(self.facing.normalize())
             self.stateTimer=self.rollTime
             self.sprite.setState('dodge'+self.getSpriteDirection())
             self.spawnDust(self.dodgeVec * 500 + Vector2(0,-50), count=3)
             self.canMove=False
-            self.setCollisionLayer('dodgeroll')
+            self.setCollisionLayer('iFrames')
+            #TODO: combine all the common stuff in roll and backstep
+            if (self.damageICounter<self.stateTimer):
+                #make sure returning from damage iFrames won't prematurely end our dodge iFrames
+                self.collisionLayerLast = None
             self.inputBuffer = self.inputBufferDodge
             self.dodgeCooldownTimer = self.dodgeCooldown
         elif (state == 'backstep'):
@@ -639,9 +656,18 @@ class Player(Character):
             self.canMove=False
             self.inputBuffer = self.inputBufferDodge
             self.dodgeCooldownTimer = self.dodgeCooldown
-            self.setCollisionLayer('dodgeroll')
+            self.setCollisionLayer('iFrames')
+            if (self.damageICounter<self.stateTimer):
+                #make sure returning from damage iFrames won't prematurely end our dodge iFrames
+                self.collisionLayerLast = None 
         elif (state == 'damageStun'):
             self.stateTimer = self.damageStunTime
+            self.sprite.setState('idle'+self.getSpriteDirection()) #placeholder sprite
+            self.attackOb.setActive(False)
+        elif (state=='dead'):
+            self.velocity = Vector2()
+            self.sprite.setState('dead')
+            self.noCollide=True
         else:
             #fallback
             self.canMove=False
@@ -737,7 +763,7 @@ class Particle(Actor):
 class EffectTrigger(Actor):
     #TODO: make Trigger base class
     def quickAdd(name, position, effect, effectValues):
-        trigger = EffectTrigger(name, rm.Level.current,
+        trigger = EffectTrigger(name, rm.Room.current,
                                 pygame.Rect(0, 0, rm.Level.tileSize, rm.Level.tileSize),
                                 None, position=position)
         trigger.effect=effect
@@ -773,9 +799,6 @@ class Crate(Actor):
     def onDeath(self):
         super().onDeath()
         self.destroy()
-    def returnFromDamage(self):
-        super().returnFromDamage()
-        self.sprite.setState('normal')
 class NPC(Character):
     def __init__(self, name, room, collisionBounds, sprite, behaviorIdle, behaviorAwake, behaviorAction,
                  leaveRoomFunc = 'reset', **kwargs):
@@ -893,7 +916,8 @@ class NPC(Character):
             pass
 
 def Spawn(entityName, room, position):
-    if (entityName=='slime'):
+    print(entityName)
+    if (entityName=='Slime'):
         #TODO: move default sprite generation into init for NPC (with some settings)
         w=16
         h=16

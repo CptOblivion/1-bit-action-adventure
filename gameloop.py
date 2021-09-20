@@ -62,10 +62,8 @@ class GameLoop:
                 GameLoop.inputEvents[val] = ev.InputEvent()
         
         game.window = Window()
-        #player=ent.Player()
-        rm.Room.changeRoom('StartRoom', 'start')
-        ent.PlayerSpawn(rm.Room.current, 'start')
-        #player.spawnLandingImpact()
+        rm.Level('TestZone', 'StartRoom', 'Start')
+        ent.PlayerSpawn(rm.Room.current, 'Start')
         GameLoop.lastTime = datetime.datetime.now()
         
     def updateDeltaTime():
@@ -88,9 +86,9 @@ class GameLoop:
             if (actor.active and not actor.noCollide):
                 if (not actor.noCollideActors): testActors.append(actor)
                 if (not actor.noCollideWalls):
-                    cellIndex=actor.position//rm.Room.current.tileSize
-                    remainder=actor.position - cellIndex * rm.Room.current.tileSize
-                    remainder -= Vector2(rm.Room.current.tileSize/2,rm.Room.current.tileSize/2)
+                    cellIndex=actor.position//rm.Level.current.tileSize
+                    remainder=actor.position - cellIndex * rm.Level.current.tileSize
+                    remainder -= Vector2(rm.Level.current.tileSize/2,rm.Level.current.tileSize/2)
                     if (remainder.x > 0):remainder.x=1
                     else: remainder.x=-1
                     if (remainder.y > 0): remainder.y=1

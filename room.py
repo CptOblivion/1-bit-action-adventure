@@ -8,6 +8,58 @@ import entities as e
 #TODO: rename back to level.py, put Level class in here with Room
 #   (it'll probably be long but they're pretty tightly coupled)
 
+class Level:
+    current=None
+    def getProp(path, propName, default=None):
+        if (propName in path): return path[propName]
+        return default
+    def loadRoom(self,roomName):
+        print('loading room ',roomName)
+        #TODO: learn about how to trigger garbage collection (and ensure the previous room is properly flushed)
+        self.rooms[roomName] = Room(roomName, self)
+    def changeRoom(self, roomName, doorName, oldDoor=None):
+        #print('moving to room ', roomName, ' at door ', doorName)
+        if (not roomName in self.rooms):
+            self.loadRoom(roomName)
+        newRoom=self.rooms[roomName]
+        newDoor = newRoom.doors[doorName]
+        details = RoomChangeDetails(Room.current, newRoom, oldDoor, newDoor)
+        if (Room.current):
+            Room.current.leavingRoom(details)
+        Room.current=newRoom
+        Room.onRoomChange.invoke(details)
+        newRoom.enteredRoom(details)
+    def __init__(self, levelName, startRoom, startDoor):
+        Level.current=self
+        self.rooms={}
+        self.config = configparser.ConfigParser()
+        self.config.read(os.path.join(os.getcwd(), 'Assets', 'Levels',levelName+'.lvl'))
+        self.tileSize=int(Level.getProp(self.config['General'], 'tilesize', default=16))
+        self.tileset = pygame.image.load(os.path.join(os.getcwd(), 'Assets', 'Tilesets',
+                                                      Level.getProp(self.config['General'], 'tileset')))
+        self.floorTiles={}
+        self.wallTiles={}
+        self.entities={}
+        for floorString in self.config['General']['floors'].split('\n'):
+            if (floorString != ''):
+                print('floorString:',floorString)
+                rValue,name,x,y=floorString.split(',')
+                x,y=(int(x), int(y))
+                self.floorTiles[rValue]=Tile(name, pygame.Rect(x*self.tileSize,y*self.tileSize,
+                                                                self.tileSize,self.tileSize), self.tileset)
+        #for iniIndex in self.config['Walls']:
+        for wallString in self.config['General']['walls'].split('\n'):
+            if (wallString != ''):
+                bValue,name,x,y,height = wallString.split(',')
+                x,y,height =(int(x), int(y), int(height))
+                self.wallTiles[bValue]=WallTile(name, pygame.Rect(x*self.tileSize,y*self.tileSize,
+                                                                self.tileSize,height), self.tileset,
+                                                  baseHeight=self.tileSize)
+        for entityString in self.config['General']['entities'].split('\n'):
+            if (entityString != ''):
+                name,junkData=entityString.split(',')
+        self.changeRoom(startRoom, startDoor)
+
 class RoomChangeEvent(ev.Event):
     #technically could just use InputEvent, but it's nice having a separate name to avoid confusion
     def invoke(self, room):
@@ -22,36 +74,22 @@ class RoomChangeDetails:
         self.newDoor = newDoor
 
 class Room:
-    current=None
+    current=False
+    onRoomChange=RoomChangeEvent()
     init=False
-    onRoomChange = RoomChangeEvent()
-    rooms={}
-    def loadRoom(roomName):
-        print('loading room ',roomName)
-        #TODO: learn about how to trigger garbage collection (and ensure the previous room is properly flushed)
-        Room.rooms[roomName] = Room(roomName)
-    def changeRoom(roomName, doorName, oldDoor=None):
-        #print('moving to room ', roomName, ' at door ', doorName)
-        if (not roomName in Room.rooms):
-            Room.loadRoom(roomName)
-        newRoom=Room.rooms[roomName]
-        newDoor = newRoom.doors[doorName]
-        details = RoomChangeDetails(Room.current, newRoom, oldDoor, newDoor)
-        if (Room.current):
-            Room.current.leavingRoom(details)
-        Room.current=newRoom
-        Room.onRoomChange.invoke(details)
-        newRoom.enteredRoom(details)
-    def __init__(self, roomFile: str):
+    def __init__(self, name, level):
+        self.level=level
+        self.name=name
         self.onRoomEnter = RoomChangeEvent()
         self.onRoomLeave = RoomChangeEvent()
-        self.config = configparser.ConfigParser()
-        self.config.read(os.path.join(os.getcwd(), 'Assets', 'Levels',roomFile+'.lvl'))
-        self.mapImage=pygame.image.load(os.path.join(os.getcwd(), 'Assets', 'Levels', self.config['Main']['Image']))
-        self.tileset=pygame.image.load(os.path.join(os.getcwd(), 'Assets', 'Tilesets', self.config['Main']['Tileset']))
+        roomDetails=self.level.config[name]
+        self.tileSize = self.level.tileSize #TODO: maybe we should store this in just one place
+        
+        roomLayoutImage=Level.getProp(roomDetails, 'levelfile', name + '.png')
+        self.mapImage=pygame.image.load(
+            os.path.join(os.getcwd(), 'Assets', 'Levels', roomLayoutImage))
         self.width = self.mapImage.get_width()
         self.height = self.mapImage.get_height()
-        self.tileSize=int(self.config['Main']['Tilesize'])
         self.tileCache = pygame.Surface((self.width *self.tileSize, self.height*self.tileSize))
 
         self.floors = []
@@ -68,50 +106,39 @@ class Room:
                 rowFloor.append(None)
             self.floors.append(rowFloor)
             self.walls.append(rowWall)
-        self.floorTiles={}
-        self.wallTiles={}
-        for iniIndex in self.config['Floors']:
-            iniString=self.config['Floors'][iniIndex]
-            name,x,y=iniString.split(',')
-            x,y=(int(x), int(y))
-            self.floorTiles[iniIndex]=Tile(name, pygame.Rect(x*self.tileSize,y*self.tileSize,
-                                                            self.tileSize,self.tileSize), self.tileset)
-        for iniIndex in self.config['Walls']:
-            iniString=self.config['Walls'][iniIndex]
-            name,x,y,height = iniString.split(',')
-            x,y,height =(int(x), int(y), int(height))
-            self.wallTiles[iniIndex]=WallTile(name, pygame.Rect(x*self.tileSize,y*self.tileSize,
-                                                            self.tileSize,height), self.tileset, baseHeight=self.tileSize)
 
         for x in range(self.width):
             for y in range(self.height):
                 pixel=self.mapImage.get_at((x,y))
-                self.floors[x][y]=self.floorTiles[str(pixel[0])]
+                self.floors[x][y]=self.level.floorTiles[str(pixel[0])]
                 if (pixel[1] > 0):
-                    self.walls[x][y].setWall(self.wallTiles[str(pixel[1])])
+                    self.walls[x][y].setWall(self.level.wallTiles[str(pixel[1])])
 
-        for doorName in self.config['Doors']:
-            doorString=self.config['Doors'][doorName]
-            left,top,width,height,dir,linkedRoom,linkedDoor = doorString.split(',')
-            left,top,width,height=(int(left)*self.tileSize,int(top)*self.tileSize,int(width)*self.tileSize,int(height)*self.tileSize)
-            position = (left+width/2,top+height/2)
-            bounds=pygame.Rect(-width/2,-height/2,width, height)
-            if(dir=='l' or dir=='L'):
-                offs=(-1,0)
-            elif(dir=='r' or dir=='R'):
-                offs=(1,0)
-            elif(dir=='u' or dir=='U' or dir=='t' or dir=='T'):
-                offs=(0,-1)
-            elif(dir=='d' or dir=='D'or dir=='b' or dir=='B'):
-                offs=(0,1)
-            playerOffset=Vector2((bounds.width)*offs[0],(bounds.height)*offs[1])
+        #for doorName in self.config['Doors']:
+        for doorString in roomDetails['doors'].split('\n'):
+            if (doorString != ''):
+                #doorString=self.config['Doors'][doorName]
+                doorName,left,top,width,height,dir,linkedRoom,linkedDoor = doorString.split(',')
+                left,top,width,height=(int(left)*self.tileSize,int(top)*self.tileSize, int(width)*self.tileSize,
+                                       int(height)*self.tileSize)
+                position = (left+width/2,top+height/2)
+                bounds=pygame.Rect(-width/2,-height/2,width, height)
+                if(dir=='l' or dir=='L'):
+                    offs=(-1,0)
+                elif(dir=='r' or dir=='R'):
+                    offs=(1,0)
+                elif(dir=='u' or dir=='U' or dir=='t' or dir=='T'):
+                    offs=(0,-1)
+                elif(dir=='d' or dir=='D'or dir=='b' or dir=='B'):
+                    offs=(0,1)
+                playerOffset=Vector2((bounds.width)*offs[0],(bounds.height)*offs[1])
 
-            roomDoor=Door(doorName,self,position,bounds,None,linkedRoom,linkedDoor,playerOffset)
+                roomDoor=Door(doorName,self,position,bounds,None,linkedRoom,linkedDoor,playerOffset)
 
-        for key in self.config['Entities']:
-            for entry in self.config['Entities'][key].split('/'):
-                posX, posY=entry.split(',')
-                e.Spawn(key, self, Vector2(int(posX),int(posY)))
+        for entityString in roomDetails['entities'].split('\n'):
+            if (entityString != ''):
+                entityName, posX, posY=entityString.split(',')
+                e.Spawn(entityName, self, Vector2(int(posX),int(posY)))
 
     def updateTileCache(self):
         for x in range(self.width):
@@ -171,7 +198,7 @@ class Door(e.Actor):
         super().onCollide(collision)
         if (collision.collider==e.Player.current): self.triggerLoad()
     def triggerLoad(self):
-        Room.changeRoom(self.linkedRoom, self.linkedDoor, oldDoor=self)
+        Level.current.changeRoom(self.linkedRoom, self.linkedDoor, oldDoor=self)
     def update(self):
         super().update()
     def draw(self):
