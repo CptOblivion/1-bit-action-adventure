@@ -108,13 +108,12 @@ class Actor(Entity):
             self.collidingObType=collidingObType
             self.force = force
     #has collision
-    def __init__(self, name, room, collisionBounds, sprite, ghost=False,collisionLayer=1, **kwargs):
+    def __init__(self, name, room, collisionBounds, sprite, ghost=False,collisionLayer=1, health=1, **kwargs):
         self.collisionLayer=collisionLayer
         #weird fake initializations so the position and collisionBound setters won't complain later
         self._globalPosition=Vector2()
         self.collisionBounds=pygame.Rect(0,0,0,0)
         #TODO: add static tag (never check wall or floor collisions)
-        #TODO: add noCollideActors tag to only check walls for collision
         #TODO: instead of bounds and origin, make it origin and size (w,h) and generate bounds from that
         #   (for easier definition down the line)
         #   (but of course include optional bounds input to override it)
@@ -122,17 +121,20 @@ class Actor(Entity):
         self.collisionBounds=collisionBounds
         if (self.room): self.room.actors.append(self)
         self.ghost=ghost #registers collisions, but doesn't receive physics
+        self.static = False #isn't moved by forces
         self.skipDamage=True
         self.noCollideActors=False #skips collision tests with other actors
         self.noCollideWalls=False#skips collision test with walls
         self.noCollide=False #skips collision entirely
         self.velocity = pygame.Vector2(0,0)
-        self.health=1
+        self.health=health
         self.damageITime=.5
         self.damageICounter=0
         self.collisionLayerLast=None
         self.isObstacle=False
         self.debugCollider=None
+        self.damageFlicker=.03
+        self.damageFlickerTimer=.02
         #TODO: map b key to toggle debug colliders
         #self.debugCollider = (0,255,0)
     @property
@@ -167,14 +169,17 @@ class Actor(Entity):
         self.collisionLayerLast=self.collisionLayer
         if (type(layer)==int): self.collisionLayer=layer
         else: self.collisionLayer = Actor.collisionLayerNames[layer]
-    def takeDamage(self, damage, fromActor):
+    def takeDamage(self, damage, fromActor, force):
         if (not self.skipDamage and self.damageICounter <=0):
+            self.velocity = force
             self.health -= damage
             if self.health <= 0:
                 self.onDeath()
                 return
             self.damageICounter=self.damageITime
+            self.collisionLayerLast=self.collisionLayer
             self.setCollisionLayer('hitStun')
+            self.damageFlickerTimer=self.damageFlicker
     def onDeath(self):
         pass
     def setRoom(self, room):
@@ -245,7 +250,12 @@ class Actor(Entity):
         super().update()
         if (self.damageICounter>0):
             self.damageICounter-=g.deltaTime
+            self.damageFlickerTimer -= g.deltaTime
+            if (self.damageFlickerTimer <=0):
+                self.damageFlickerTimer = self.damageFlicker
+                self.visible = not self.visible
             if (self.damageICounter <=0):
+                self.visible=True
                 self.returnFromDamage()
                 self.setCollisionLayer(self.collisionLayerLast)
         if (self.debugCollider): self.debugCollider=(0,255,0)
@@ -378,8 +388,11 @@ class Player(Character):
                     'landing':((0,0,0,0,1),(112,0,16,16,1),(112,16,16,16,.3),(0,0,16,16,1))
                     }
         super().__init__('player', room, collisionBounds,
-                       s.Sprite(sheetName, 'landing', states = animDict, sheet=playerSheet),origin=(-8,-15),**kwargs)
+                       s.Sprite(sheetName, 'landing', states = animDict, sheet=playerSheet), origin=(-8,-15),
+                       health=10, **kwargs)
         rm.Room.onRoomChange.add(self.roomChange)
+        self.skipDamage=False
+        self.damageStunTime=.15
         self.walkSpeed = 100
         self.dodgeSpeed = 350
         self.dodgeSteer = 15
@@ -461,6 +474,7 @@ class Player(Character):
     def inputMoveY(self, value):
         self.moveInputVec.y = -value
     def inputMoveUp(self, buttonDown):
+        #TODO: move all this inputMove stuff into a class in GameLoop, pass along a vector to each axis
         if (buttonDown):
             self.moveInputVec += Vector2(0,-1)
         else:
@@ -483,7 +497,15 @@ class Player(Character):
     def inputAttack(self, buttonDown):
         if (buttonDown):
             self.queueState('attack')
-
+    def takeDamage(self, damage, fromActor, force):
+        super().takeDamage(damage, fromActor, force)
+        self.setState('damageStun')
+        self.sprite.setState('idle'+self.getSpriteDirection()) #placeholder sprite
+        self.attackOb.setActive(False)
+        #TODO: set hurt animation
+    #def returnFromDamage(self):
+    #    super().returnFromDamage()
+    #    self.setState('normal')
     def inputDodge(self, buttonDown):
         if (buttonDown):
             if (self.dodgeCooldownTimer <=0):
@@ -539,6 +561,10 @@ class Player(Character):
             self.advanceState()
         elif (self.state=='start'):
             self.advanceState()
+        elif (self.state=='damageStun'):
+            self.advanceState()
+        else:
+            pass
         self.totalForce=Vector2()
         if (updateDodgeDelay):
             self.dodgeCooldownTimer -= g.deltaTime
@@ -568,6 +594,8 @@ class Player(Character):
 
     def setState(self, state):
         lastState=self.state
+        if (lastState == 'roll' or lastState == 'backstep'):
+            self.setCollisionLayer('player')
         self.state=state
         self.nextState='normal'
         if (state != 'attack'): self.attackString = 0
@@ -600,6 +628,7 @@ class Player(Character):
             self.sprite.setState('dodge'+self.getSpriteDirection())
             self.spawnDust(self.dodgeVec * 500 + Vector2(0,-50), count=3)
             self.canMove=False
+            self.setCollisionLayer('dodgeroll')
             self.inputBuffer = self.inputBufferDodge
             self.dodgeCooldownTimer = self.dodgeCooldown
         elif (state == 'backstep'):
@@ -610,6 +639,9 @@ class Player(Character):
             self.canMove=False
             self.inputBuffer = self.inputBufferDodge
             self.dodgeCooldownTimer = self.dodgeCooldown
+            self.setCollisionLayer('dodgeroll')
+        elif (state == 'damageStun'):
+            self.stateTimer = self.damageStunTime
         else:
             #fallback
             self.canMove=False
@@ -629,10 +661,8 @@ class DamageBox(Actor):
         self.damageTime=damageTime
         self.remainTime=remainTime
         self.state='notYetActivated'
-        print(self.sprite.currentSprite)
         self.surface=pygame.Surface((self.sprite.currentSprite.width,self.sprite.currentSprite.height),
                                    flags=pygame.SRCALPHA)
-        #TODO: collision mask
     def attack(self, position, facingVec, attackName=''):
         self.setActive(True)
         self.position=position
@@ -650,7 +680,6 @@ class DamageBox(Actor):
             self.tier=self.damageTime
             self.noCollide=False
             self.state='damage'
-
         #we'll draw rotated, but collision uses orthogonal squares
     def update(self):
         super().update()
@@ -679,7 +708,9 @@ class DamageBox(Actor):
         super().onCollide(collision)
         col=collision.collider
         if hasattr(col,'takeDamage'):
-            col.takeDamage(1,self)
+            #TODO: implement force
+            vec = col.position - self.position
+            col.takeDamage(1,self,vec.normalize()*50)
 
 class Particle(Actor):
     def __init__(self, name, room, collisionBounds, sprite, life, **kwargs):
@@ -730,19 +761,14 @@ class EffectTrigger(Actor):
             self.onTrigger()
 class Crate(Actor):
     def __init__(self, room, position):
-        super().__init__('crate',room, pygame.Rect(-8,-13,16,16),
-                         s.Sprite('Crate','normal',states={'normal':(0,0,16,16),
-                                                           'hurt':((0,0,1,1,.03),(0,0,16,16))}),
+        super().__init__('crate',room, pygame.Rect(-8,-13,16,16), ('Crate',(0,0,16,16)),
                          position=position, origin=(-8,-13))
         self.skipDamage=False
         self.setCollisionLayer('breakables')
         self.health=3
         self.isObstacle=True
-    def takeDamage(self, damage, fromActor):
-        super().takeDamage(damage, fromActor)
-        #TODO: use something other than a custom-defined sprite for flicker
-        #   maybe an invisible flag that we can toggle on and off while hurt
-        #TODO: add that invisible flag
+    def takeDamage(self, damage, fromActor, force):
+        super().takeDamage(damage, fromActor,force)
         self.sprite.setState('hurt')
     def onDeath(self):
         super().onDeath()
@@ -762,11 +788,13 @@ class NPC(Character):
         self.behaviorIdle=behaviorIdle
         self.behaviorAwake=behaviorAwake
         self.behaviorAction=behaviorAction
-        self.AIState='idle'
+        self.AIState='sleep'
+        self.wakeupTime = 0
+        self.wakeupTimer=0
         self.wakeupRange=100
-        self.sleepRange=150
+        self.wakeupRangeBuffer=20
         self.actionRange=16
-        self.leaveActionRange=32
+        self.actionRangeBuffer=16
         self.collisionLayerAlive=self.collisionLayer
         if (leaveRoomFunc == 'reset'): self.onRoomChange=self.reset
         elif (leaveRoomFunc == 'sleep'): self.onRoomChange=self.sleep
@@ -779,7 +807,7 @@ class NPC(Character):
         if (self.active and self.AIState!='dead'):
             self.position=Vector2(self.startPosition)
             self.health=self.startHealth
-            self.setAIState('idle')
+            self.setAIState('sleep')
             self.facing = Vector2(0,1)
             #self.sprite.resetState()
     def respawn(self, roomChangeDetails):
@@ -797,10 +825,16 @@ class NPC(Character):
     def setAIState(self, state):
         #function so we can trigger stuff on state change if need be
         self.AIState=state
+        if (state == 'sleep'):
+            self.velocity=Vector2()
+            self.sprite.setState('sleep')
+        elif (state == 'wakeup'):
+            self.wakeupTimer = self.wakeupTime
+            self.sprite.setState('wakeup')
     def getVectTo(self, actor):
         return (actor.position - self.position)
-    def takeDamage(self, damage, fromActor):
-        super().takeDamage(damage, fromActor)
+    #def takeDamage(self, damage, fromActor, force):
+    #    super().takeDamage(damage, fromActor, force)
     def onDeath(self):
         super().onDeath()
         self.velocity=Vector2()
@@ -809,33 +843,49 @@ class NPC(Character):
         self.sprite.setState('dead')
         #TODO: disappears on death, instead of showing dead sprite
         #   maybe sprite is set wrong? maybe physics go weird? print position or something I dunno
+    def onCollide(self, collision):
+        super().onCollide(collision)
+        if (self.AIState != 'hurt' and collision.collider == Player.current):
+            vec = collision.collider.position - self.position
+            collision.collider.takeDamage(1,self,vec.normalize() * 50)
+    def returnFromDamage(self):
+        super().returnFromDamage()
+        self.setAIState('awake')
+    def takeDamage(self, damage, fromActor, force):
+        super().takeDamage(damage, fromActor, force)
+        self.setAIState('hurt')
     def update(self):
         super().update()
         if (not Player.current): pass
-        vec = self.getVectTo(Player.current)
-        dist=vec.magnitude()
-        if (self.AIState=='idle'):
+        if (not self.AIState == 'dead'):
+            vec = self.getVectTo(Player.current)
+            dist=vec.magnitude()
+        if (self.AIState=='sleep'):
             if (dist < self.wakeupRange):
-                self.setAIState('awake')
+                self.setAIState('wakeup')
                 return
-            self.go(Vector2())
+            #self.go(Vector2())
+        elif (self.AIState == 'wakeup'):
+            self.wakeupTimer -= g.deltaTime
+            if (self.wakeupTimer <= 0):
+                self.setAIState('awake')
         elif (self.AIState == 'awake'):
             if (dist <=self.actionRange):
                 self.setAIState('act')
                 return
-            if (dist > self.sleepRange):
-                self.setAIState('idle')
+            if (dist > self.wakeupRange + self.wakeupRangeBuffer):
+                self.setAIState('sleep')
                 return
             if (self.behaviorAwake == 'follow'):
                 self.go(vec.normalize()*self.moveSpeed)
                 return
             self.go(Vector2())
         elif (self.AIState == 'act'):
-            if (dist > self.sleepRange):
-                self.setAIState('idle')
+            if (dist > self.wakeupRange + self.wakeupRangeBuffer):
+                self.setAIState('sleep')
                 return
-            if (dist > self.leaveActionRange):
-                self.setAIState('act')
+            if (dist > self.actionRange + self.actionRangeBuffer):
+                self.setAIState('awake')
                 return
             self.go(Vector2())
         else:
@@ -850,9 +900,14 @@ def Spawn(entityName, room, position):
         #placeholder until I have an actual spawning system
         animDict={**Character.generateFacingSprites('idle', 0, w,h,.25),
                   **Character.generateFacingSprites('walk', 0, w,h,.25),
+                  'sleep':(48,16,16,16,100),
+                  'wakeup':((48,32,16,16,.3),(0,64,16,16),(0,0,16,16)),
                   'dead':(48,0,16,16,100)}
 
-        slime=NPC('slime', room, pygame.Rect(-8,-12,16,16), s.Sprite('Slime', 'idle_01', states=animDict),
-                 None, 'follow', None, leaveRoomFunc='reset', position=position, origin=(-8,-12),
-                 collisionLayer=2)
+        slime=NPC('slime', room, pygame.Rect(-8,-12,16,16), s.Sprite('Slime', 'sleep', states=animDict),
+                 None, 'follow', None, leaveRoomFunc='respawn', position=position, origin=(-8,-12),
+                 health=5, collisionLayer=2)
         slime.skipDamage=False
+        slime.damageITime = .3
+        slime.actionRange=0
+        slime.wakeupTime=.9

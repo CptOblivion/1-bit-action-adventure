@@ -9,7 +9,7 @@ Tilesize:16
 [Walls]
 255:NormalWall,6,0,32
 [Entities]
-Slime:100,100
+Slime:100,100/200,50/90,60
 [Doors]:
 tl:5,-1,2,1,D,CaveHall,b
 tr:18,-1,2,1,D,StartRoom,b

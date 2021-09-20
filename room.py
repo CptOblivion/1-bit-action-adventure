@@ -109,8 +109,9 @@ class Room:
             roomDoor=Door(doorName,self,position,bounds,None,linkedRoom,linkedDoor,playerOffset)
 
         for key in self.config['Entities']:
-            posX, posY=self.config['Entities'][key].split(',')
-            e.Spawn(key, self, Vector2(int(posX),int(posY)))
+            for entry in self.config['Entities'][key].split('/'):
+                posX, posY=entry.split(',')
+                e.Spawn(key, self, Vector2(int(posX),int(posY)))
 
     def updateTileCache(self):
         for x in range(self.width):
@@ -122,7 +123,7 @@ class Room:
         for i in range(self.height):
             entityPositions.append([])
         for entity in self.entities:
-            if (entity.active):
+            if (entity.active and entity.visible):
                 gridCell = int(entity.position.y / self.tileSize)
                 if (0 <= gridCell < len(entityPositions)):
                     entityPositions[gridCell].append(entity)
