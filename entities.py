@@ -358,7 +358,7 @@ class PlayerSpawn(Entity):
                 g.Window.current.shake(6,1,0,.05)
                 player = Player(self.room, position=self.targetPosition)
                 impactSprite=Entity('impactEffect',self.room,('Guy',(
-                    (0,0,0,0,1),(112,48,16,8,.3),(112,64,16,8),(112,72,16,8))),
+                    (0,0,0,0,1),(112,48,16,8,.3),(112,56,16,8),(112,64,16,8))),
                                     position=self.position, origin=(-8,-4))
                 impactSprite.destroy(time=.9)
                 player.spawnDust((-300,0), count=3)
@@ -386,7 +386,7 @@ class Player(Character):
                     **Character.generateFacingSprites('attack2',5,w,h,2),
                     #for some reason, the first frame (regardless of time) is skipped on spawn
                     'landing':((0,0,0,0,1),(112,0,16,16,1),(112,16,16,16,.3),(0,0,16,16,1)),
-                    'dead':(112,88,16,16,100)
+                    'dead':((112,0,16,16,.5),(112,80,16,16), 'noLoop')
                     }
         super().__init__('player', room, collisionBounds,
                        s.Sprite(sheetName, 'landing', states = animDict, sheet=playerSheet), origin=(-8,-15),
@@ -429,16 +429,16 @@ class Player(Character):
         self.attackOb=DamageBox('playerAttack',self.room,bounds,
                                 s.Sprite('Sword Slash2', 'Aortho',states={'Aortho':((0,0,16,16,.03),
                                                                                   (16,0,16,16,.02),
-                                                                                  (32,0,16,16,100)),
+                                                                                  (32,0,16,16), 'noLoop'),
                                                                          'Adiag':((0,16,16,16,.03),
                                                                                   (16,16,16,16,.02),
-                                                                                  (32,16,16,16,100)),
+                                                                                  (32,16,16,16), 'noLoop'),
                                                                          'Bortho':((0,32,16,16,.03),
                                                                                   (16,32,16,16,.02),
-                                                                                  (32,32,16,16,100)),
+                                                                                  (32,32,16,16), 'noLoop'),
                                                                          'Bdiag':((0,48,16,16,.03),
                                                                                   (16,48,16,16,.02),
-                                                                                  (32,48,16,16,100))}),
+                                                                                  (32,48,16,16), 'noLoop')}),
                                 1,.03,.02,.25,collisionLayer='playerAttack',
                               ghost=True, parent=self, origin=center)
     def draw(self):
@@ -502,14 +502,9 @@ class Player(Character):
         if (super().takeDamage(damage, fromActor, force)):
             return True
         self.setState('damageStun')
-        #TODO: for some reason, this can trigger a bunch of frames in a row (despite there should be no
-        #   collision mask interaction)
-        #   because of iFrames no extra damage is dealt, but clearly the mask isn't working or something
-        print('player damage! Health: ', self.health)
-        #TODO: set hurt animation
+        #TODO: actual hurt animation
     def returnFromDamage(self):
         super().returnFromDamage()
-        #TODO: when damaged and dodgerolling, whichever ends first will return from iframes
     def onDeath(self):
         print('you died to death')
         self.setState('dead')
@@ -517,7 +512,6 @@ class Player(Character):
     def inputDodge(self, buttonDown):
         if (buttonDown):
             if (self.dodgeCooldownTimer <=0):
-                #self.queueState('dodge')
                 if self.moveInputVec.magnitude() > 0:
                     self.queueState('roll')
                 else:
@@ -694,6 +688,7 @@ class DamageBox(Actor):
         self.position=position
         self.rotation=degrees(atan2(facingVec[0],facingVec[1]))+180
         self.rotation=int(self.rotation/45)
+        self.facingVec=facingVec
         #self.diag=self.rotation%2
         if (self.rotation%2): self.sprite.setState(attackName+'diag', restart=True)
         else: self.sprite.setState(attackName+'ortho', restart=True)
@@ -735,7 +730,8 @@ class DamageBox(Actor):
         col=collision.collider
         if hasattr(col,'takeDamage'):
             #TODO: implement force
-            vec = col.position - self.position
+            #vec = col.position - self.position
+            vec=self.facingVec
             col.takeDamage(1,self,vec.normalize()*50)
 
 class Particle(Actor):
@@ -916,7 +912,6 @@ class NPC(Character):
             pass
 
 def Spawn(entityName, room, position):
-    print(entityName)
     if (entityName=='Slime'):
         #TODO: move default sprite generation into init for NPC (with some settings)
         w=16
@@ -924,9 +919,9 @@ def Spawn(entityName, room, position):
         #placeholder until I have an actual spawning system
         animDict={**Character.generateFacingSprites('idle', 0, w,h,.25),
                   **Character.generateFacingSprites('walk', 0, w,h,.25),
-                  'sleep':(48,16,16,16,100),
-                  'wakeup':((48,32,16,16,.3),(0,64,16,16),(0,0,16,16)),
-                  'dead':(48,0,16,16,100)}
+                  'sleep':(48,16,16,16),
+                  'wakeup':((48,32,16,16,.3),(0,64,16,16),(0,0,16,16),'noLoop'),
+                  'dead':((48,32,16,16,.5),(48,0,16,16),'noLoop')}
 
         slime=NPC('slime', room, pygame.Rect(-8,-12,16,16), s.Sprite('Slime', 'sleep', states=animDict),
                  None, 'follow', None, leaveRoomFunc='respawn', position=position, origin=(-8,-12),
@@ -934,4 +929,6 @@ def Spawn(entityName, room, position):
         slime.skipDamage=False
         slime.damageITime = .3
         slime.actionRange=0
-        slime.wakeupTime=.9
+        slime.wakeupTime=1
+    else:
+        print('no entity', entityName,'!')

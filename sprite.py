@@ -8,13 +8,18 @@ class Sprite:
         return pygame.image.load(os.path.join(os.getcwd(), 'Assets','Sprites',sheetName+'.png'))
     class State:
         #TODO: move state.currentFrame into Sprite, so we can reuse states between multiple sprite instances
+        #   since currentFrame is the only data that changes during runtime, the rest of state is static
         #TODO: automatic caching of state instances in multiple copies of the same object
-        def __init__(self, frames):
+        def __init__(self, frames, loop=True):
             self.frames=[]
-            if ((not (type(frames) == list or type(frames) == tuple)) or type(frames[0])==int):
+            #if ((not (type(frames) == list or type(frames) == tuple)) or type(frames[0])==int):
+            if (type(frames) == Sprite.Frame or type(frames[0])==int):
                 frames=(frames,) #single frames can be passed, nest it in an empty tuple for simple processing
             for frame in frames:
-                if (type(frame) == Sprite.Frame):
+                if (type(frame) == str):
+                    #if we're initializing the frames from a tuple of tuples, kwargs can be passed as strings
+                    if (frame=='noLoop'): loop=False
+                elif (type(frame) == Sprite.Frame):
                     self.frames.append(frame)
                 else:
                     if (len(frame) == 5):time=frame[4]
@@ -23,10 +28,12 @@ class Sprite:
 
             self.frames = tuple(self.frames)
             self.currentFrame=0
+            self.loop=loop
         def getCurrentFrame(self):
             return self.frames[self.currentFrame]
         def advanceFrame(self):
             if (self.currentFrame == len(self.frames)-1):
+                if (not self.loop): return None
                 self.currentFrame=0
             else:
                 self.currentFrame+=1
@@ -54,6 +61,7 @@ class Sprite:
         self.animTimer=0
         self.nextFrameTime=0
         self.states=states
+        self.playing=True
         for stateName in self.states:
             self.states[stateName]=Sprite.initState(self.states[stateName])
         if (type(startState) == str and states):
@@ -76,22 +84,28 @@ class Sprite:
 
     def draw(self, position, target=None):
         #pass None to position to update timers without drawing
-        if (len(self.currentState.frames)>1):
+        if (self.playing and len(self.currentState.frames)>1):
             self.animTimer+=g.deltaTime
             #TODO: maybe move timer into update (if draw isn't called, eg while offscreen, anim won't play)
             if (self.animTimer >= self.nextFrameTime):
                 self.animTimer = 0
-                self.currentSprite=self.currentState.advanceFrame()
-                time=self.currentState.frames[self.currentState.currentFrame].time
-                if (time):
-                    self.nextFrameTime=time
+                newSprite=self.currentState.advanceFrame()
+                if (newSprite):
+                    self.currentSprite=newSprite
+                    time=self.currentState.frames[self.currentState.currentFrame].time
+                    if (time):
+                        self.nextFrameTime=time
+                else:
+                    self.playing=False
         if (position is not None):
             if (target == None): target=g.Window.current.screen
             #TODO: return this sprite stuff
             target.blit(self.sheet, position, area=self.currentSprite)
     def setState(self, state, restart=False):
         if ((state in self.states and self.states[state] != self.currentState) or restart):
+            self.playing=True
             self.animTimer=0
             self.currentState=self.states[state]
             self.currentSprite=self.currentState.activate()
-            self.nextFrameTime = self.currentState.frames[0].time
+            if (len(self.currentState.frames) > 1):
+                self.nextFrameTime = self.currentState.frames[0].time

@@ -42,7 +42,6 @@ class Level:
         self.entities={}
         for floorString in self.config['General']['floors'].split('\n'):
             if (floorString != ''):
-                print('floorString:',floorString)
                 rValue,name,x,y=floorString.split(',')
                 x,y=(int(x), int(y))
                 self.floorTiles[rValue]=Tile(name, pygame.Rect(x*self.tileSize,y*self.tileSize,
