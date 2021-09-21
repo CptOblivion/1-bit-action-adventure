@@ -12,5 +12,5 @@ class Event:
         if (subscriber in self.subscribers):
             self.subscribers.remove(subscriber)
 class InputEvent(Event):
-    def invoke(self, state):
-        super().invoke(state)
+    def invoke(self, value):
+        super().invoke(value)

@@ -10,6 +10,76 @@ import event as ev
 #TODO: use pygame.time instead of doing our own deltatime
 deltaTime=100
 controllers=[]
+
+class Binding:
+    class BindingInput:
+        def __init__(self,
+                     type,#'button' or 'axis'
+                     device, #EG controller button, keyboard key, controller hat axis, etc
+                     input, #EG Inputs.bindings['jump']
+                     binding, #actual binding, probably int (controller button or axis, keyboard constant, etc)
+                     axisThreshold=.1, #deadzone for analog->analog, trigger threshold for analog->button
+                     buttonToFloatDirection=1, #set to -1 for buttons in the left or down direction
+                     invert=1#invert direction of output
+                     ):
+            
+            self.type = type
+            self.device=device
+            self.input=input
+            self.value = 0
+            self.binding=binding
+            self.invert=invert 
+            self.axisThreshold=axisThreshold
+            self.buttonToFloatDirection=buttonToFloatDirection
+            binding.inputs.append(self)
+        def trigger(self, newValue):
+            newValue *= self.invert
+            self.binding.updateInput(self, newValue)
+            self.value = value
+
+    def __init__(self, name, outputType):
+        #TODO: some way to extract hat values as separate buttons in one pass?
+        #TODO: consider Vector2 support
+        #bool, float
+        self.triggerBool=ev.InputEvent()
+        self.triggerAxis = ev.InputEvent()
+        self.outputType=outputType
+        self.inputs=[] #storing the inputs for later, to display in the config UI when that exists
+        self.boolCount = 0
+        self.boolValue=False
+        self.floatValue = 0
+    def updateInput(self, input, newValue):
+        discardBool=False #for float values that don't cross the trigger threshold
+        floatVal = 0
+        if (input.type == 'button'):
+            if (newValue):
+                self.boolCount +=1
+            else:
+                self.boolCount -= 1
+            self.triggerAxis.invoke(newValue * input.buttonToFloatDirection)
+        elif (input.type == 'axis'):
+            if (abs(newValue) > input.axisThreshold):
+                #TODO: forgot to check if axes are 0 to 1 or -1 to 1
+                floatVal = (abs(newValue) - input.axisThreshold) * (1-input.axisThreshold)
+                if (newValue < 0):
+                    floatVal *= -1
+                self.triggerAxis.invoke(floatVal)
+
+                if (abs(input.value) < input.axisThreshold):
+                    self.boolCount += 1
+            elif (abs(newValue) < input.axisThreshold and abs(input.value) > input.axisThreshold):
+                self.boolCount -= 1
+                self.triggerAxis.invoke(0)
+            #if both the previous and new value are on the same side of the threshold:
+            else: discardBool=True
+        if (not discardBool):
+            if (self.boolValue and not self.boolCount):
+                self.triggerBool.invoke(False)
+                self.boolValue = False
+            elif (boolCount and not self.boolValue):
+                self.triggerBool.invoke(True)
+                self.boolValue=True
+
 class GameLoop:
     lastTime=None
     rooms={}
@@ -29,6 +99,9 @@ class GameLoop:
         pygame.display.set_icon(pygame.image.load(os.path.join(os.getcwd(), 'Assets','Icon.png')))
         #TODO: some system so multiple bindings to the same action don't trip the action multiple times
         #maybe a go-between class that uses 'or' on all the inputs, and triggers on edges
+
+        #TODO: make a list of all the higher-level inputs (EG moveX, moveY, dodge)
+        #then a list of all the mappings (EG locals.K_w: moveX, 'controllerButton0': dodge, 'controllerHatY', moveY
         GameLoop.mappingDigital ={
             pygame.locals.K_w:'moveUp',
             pygame.locals.K_UP:'moveUp',
