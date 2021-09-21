@@ -14,11 +14,9 @@ class Level:
         if (propName in path): return path[propName]
         return default
     def loadRoom(self,roomName):
-        print('loading room ',roomName)
         #TODO: learn about how to trigger garbage collection (and ensure the previous room is properly flushed)
         self.rooms[roomName] = Room(roomName, self)
     def changeRoom(self, roomName, doorName, oldDoor=None):
-        #print('moving to room ', roomName, ' at door ', doorName)
         if (not roomName in self.rooms):
             self.loadRoom(roomName)
         newRoom=self.rooms[roomName]
@@ -226,7 +224,7 @@ class WallEntry:
         self.cached=False
         self.rect = pygame.Rect(position[0]* room.tileSize, position[1]* room.tileSize,
                                 room.tileSize, room.tileSize)
-        self.singleTile=(0,0)
+        self.singleTile=None
         self.forceSingleTile=False
     def updateWall(self):
         if (self.wall and self.wall.tileGroup):
@@ -290,27 +288,20 @@ class WallEntry:
             for coords in neighbors:
                 coords=(self.position[0]+coords[0], self.position[1]+coords[1])
                 neighbor = self.room.getWall(coords, None)
-                if (self.position == (14,3)): print(self.singleTile, coords, neighbor)
                 if (not (neighbor and neighbor.wall)):
                     self.singleTile=None
                     return
 
     def draw(self, cache=None):
         #TODO: should be able to condense this down a bit
-        outputSurface=None
-        if (self.cached and cache): outputSurface = cache
-        if (self.wall):
-            if (cache):
-                if (self.cached):
-                    self.wall.draw(self.position, self.corners, surface=cache)
+        draw=(cache and self.cached) or (not cache and not self.cached)
+        if (self.wall and draw):
+            if (self.wall.forceSingleTile):
+                self.wall.drawSingle(self.position,(0,0), surface=cache)
+            elif (self.singleTile):
+                self.wall.drawSingle(self.position,self.singleTile, surface=cache)
             else:
-                if (not self.cached):
-                    if (self.wall.forceSingleTile):
-                        self.wall.drawSingle(self.position,(0,0))
-                    elif (self.singleTile):
-                        self.wall.drawSingle(self.position,self.singleTile)
-                    else:
-                        self.wall.draw(self.position, self.corners)
+                self.wall.draw(self.position, self.corners, surface=cache)
     def collide(self, actor, applyForce = True):
         force=e.Actor.__collideTest__(self.rect, actor, applyForce)
         if (force):
