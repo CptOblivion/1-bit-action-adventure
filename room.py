@@ -49,11 +49,19 @@ class Level:
         #for iniIndex in self.config['Walls']:
         for wallString in self.config['General']['walls'].split('\n'):
             if (wallString != ''):
-                bValue,name,x,y,height = wallString.split(',')
+                wallArray=wallString.split(',')
+                bValue,name,x,y,height = wallArray[:5]
                 x,y,height =(int(x), int(y), int(height))
                 self.wallTiles[bValue]=WallTile(name, pygame.Rect(x*self.tileSize,y*self.tileSize,
                                                                 self.tileSize,height), self.tileset,
                                                   baseHeight=self.tileSize)
+                if (len(wallArray) > 5):
+                    for arrayEntry in wallArray[5:]:
+                        if (arrayEntry == 'diag'):
+                            self.wallTiles[bValue].supportsDiagonals = True
+                        elif (arrayEntry.startswith('tile:')):
+                            self.wallTiles[bValue].tileGroup=arrayEntry[5:]
+                        elif (arrayEntry == 'singleTile'): self.wallTiles[bValue].forceSingleTile=True
         for entityString in self.config['General']['entities'].split('\n'):
             if (entityString != ''):
                 name,junkData=entityString.split(',')
@@ -65,8 +73,8 @@ class RoomChangeEvent(ev.Event):
         super().invoke(room)
 class RoomChangeDetails:
     def __init__(self, oldRoom, newRoom, oldDoor, newDoor):
-        #TODO: do we need oldRoom? (currently need oldDoor to get the player offset on that door when they left
-        #   but there's probably a better way
+        #TODO: do we need oldRoom? (currently need oldDoor to get the player offset on that door
+        #   when they left but there's probably a better way
         self.oldRoom=oldRoom
         self.newRoom=newRoom
         self.oldDoor=oldDoor
@@ -218,40 +226,91 @@ class WallEntry:
         self.cached=False
         self.rect = pygame.Rect(position[0]* room.tileSize, position[1]* room.tileSize,
                                 room.tileSize, room.tileSize)
+        self.singleTile=(0,0)
+        self.forceSingleTile=False
     def updateWall(self):
-        if (self.wall):
+        if (self.wall and self.wall.tileGroup):
             doCache=True
             cacheList=(2,3,7)
             for x in range(-1,2,2):
                 for y in range(-1,2,2):
                     offsetIndex=0
-                    if (self.room.getWall((self.position[0]+x, self.position[1]),self).wall == self.wall):
+                    wall=self.room.getWall((self.position[0]+x, self.position[1]),self)
+                    if (wall.wall and wall.wall.tileGroup == self.wall.tileGroup):
                         offsetIndex += 4
-                    if (self.room.getWall((self.position[0], self.position[1]+y),self).wall == self.wall):
+                    wall = self.room.getWall((self.position[0], self.position[1]+y),self)
+                    if (wall.wall and wall.wall.tileGroup == self.wall.tileGroup):
                         offsetIndex += 2
-                    if (self.room.getWall((self.position[0]+x, self.position[1]+y),self).wall == self.wall):
+                    wall=self.room.getWall((self.position[0]+x, self.position[1]+y),self)
+                    if (wall.wall and wall.wall.tileGroup == self.wall.tileGroup):
                         offsetIndex += 1
+                    #trim fallbacks
+                    if (offsetIndex == 1 or offsetIndex == 3 or offsetIndex==5): offsetIndex -=1
                     self.corners[max(0,x)][max(0,y)] = offsetIndex
                     if (not offsetIndex in cacheList): doCache = False
+            self.checkDiagonal()
             self.cached=doCache
             #don't forget to redraw cache after updating
             #maybe can get away with just drawing this tile and every one below it in the same column
-            #maybe also just mark the tile's height in an array of all the columns (unless a higher tile is already marked)
+            #maybe also just mark the tile's height in an array of all the columns
+            #   (unless a higher tile is already marked)
             #   then just update marked columns from that height down
     def setWall(self, wall):
         self.wall=wall
+        self.updateWall()
         for x in range(-1,2):
             for y in range(-1,2):
                 neighbor = self.room.getWall((self.position[0]+x,self.position[1]+y))
-                if (neighbor): neighbor.updateWall()
+                if (neighbor and neighbor != self): neighbor.updateWall()
+        #TODO: checkDiagonal on neighbors after we've updated
+    def checkDiagonal(self):
+        if (not self.wall.supportsDiagonals): return
+        self.singleTile=None
+        #TODO: test the relevant corner in the relevant neighbors
+        if  (self.corners == [[2,0],[7,4]]):
+            #lower left
+            #TODO: condense
+            #   EG if corner[0] == corner[1] we can use ((-1,1),(1,-1)) else use ((-1,-1,),(1,1))
+            #   or maybe even just use the same X coordinate and flip the Y
+            neighbors=((-1,-1),(1,1))
+            self.singleTile=(0,1)
+        elif (self.corners == [[7,4],[2,0]]):
+            #lower right
+            neighbors=((-1,1),(1,-1))
+            self.singleTile=(1,1)
+        elif (self.corners == [[0,2],[4,7]]):
+            #upper left
+            neighbors=((-1,1),(1,-1))
+            self.singleTile=(2,1)
+        elif (self.corners == [[4,7],[0,2]]):
+            #upper right
+            neighbors=((-1,-1),(1,1))
+            self.singleTile=(3,1)
+        if (self.singleTile):
+            for coords in neighbors:
+                coords=(self.position[0]+coords[0], self.position[1]+coords[1])
+                neighbor = self.room.getWall(coords, None)
+                if (self.position == (14,3)): print(self.singleTile, coords, neighbor)
+                if (not (neighbor and neighbor.wall)):
+                    self.singleTile=None
+                    return
+
     def draw(self, cache=None):
+        #TODO: should be able to condense this down a bit
+        outputSurface=None
+        if (self.cached and cache): outputSurface = cache
         if (self.wall):
             if (cache):
                 if (self.cached):
                     self.wall.draw(self.position, self.corners, surface=cache)
             else:
                 if (not self.cached):
-                    self.wall.draw(self.position, self.corners)
+                    if (self.wall.forceSingleTile):
+                        self.wall.drawSingle(self.position,(0,0))
+                    elif (self.singleTile):
+                        self.wall.drawSingle(self.position,self.singleTile)
+                    else:
+                        self.wall.draw(self.position, self.corners)
     def collide(self, actor, applyForce = True):
         force=e.Actor.__collideTest__(self.rect, actor, applyForce)
         if (force):
@@ -270,17 +329,21 @@ class Tile:
                                                position[1]*Room.current.tileSize))
 class WallTile(Tile):
     offsets = (#HVD
-        (0,1), #000, 0, outer corner
-        (0,1), #001, 1, diagonal only (fallback to outer corner)
-        (2,1), #010, 2, vertical wall
-        (2,1), #011, 3, vertical wall fallback
-        (2,0), #100, 4, horizontal wall
-        (2,0), #101, 5, horizontal wall fallback
-        (1,0), #110, 6, interior corner
-        (1,1)  #111, 7, solid
+        (0,0), #000, 0, outer corner
+        (0,0), #001, 1, diagonal only (fallback to outer corner)
+        (2,0), #010, 2, vertical wall
+        (2,0), #011, 3, vertical wall fallback
+        (3,0), #100, 4, horizontal wall
+        (3,0), #101, 5, horizontal wall fallback
+        (4,0), #110, 6, interior corner
+        (1,0)  #111, 7, solid
         )
     def __init__(self, name, rect, tileset, baseHeight=None):
         Tile.__init__(self, name, rect, tileset)
+        self.tileGroup=None
+        self.supportsDiagonals=False
+        self.forceSingleTile=False
+
         if (baseHeight==None):
             self.baseHeight = rect.height
         else: self.baseHeight = baseHeight
@@ -307,4 +370,10 @@ class WallTile(Tile):
                 cornerOffset = (x * self.rect.width/2 + finalPos[0],
                                 y * self.baseHeight/2 + finalPos[1])
                 surface.blit(self.tileset, cornerOffset, area=corner)
-
+    def drawSingle(self, gridPosition, offset, surface=None):
+        if (not surface):
+            surface=g.Window.current.screen
+        rect=self.rect.move((offset[0]*self.rect.width, offset[1]*self.rect.height))
+        drawPos=(gridPosition[0]*self.rect.width,
+                 gridPosition[1]*self.baseHeight - self.rect.height +self.baseHeight)
+        surface.blit(self.tileset, drawPos, area=rect)

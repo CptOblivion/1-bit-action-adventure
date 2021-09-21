@@ -2,12 +2,14 @@
 tileset:Tileset.png
 tilsize:16
 floors:
-	0,Sand,6,0
-	32,MushroomFloor,6,1
-	48,Tile,9,0
-	64,CrackedFloor,9,1
+	0,Sand,9,2
+	32,MushroomFloor,9,3
+	48,Tile,4,2
+	64,CrackedFloor,4,3
 walls:
-	255,NormalWall,6,0,32
+	255,CaveWall,5,0,32,tile:A,diag
+	127,TempleWall,0,0,32,tile:A
+	63,WallTransition,4,4,32,tile:A,singleTile
 entities:
 	slime,junkData
 [StartRoom]

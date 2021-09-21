@@ -12,7 +12,6 @@ class Sprite:
         #TODO: automatic caching of state instances in multiple copies of the same object
         def __init__(self, frames, loop=True):
             self.frames=[]
-            #if ((not (type(frames) == list or type(frames) == tuple)) or type(frames[0])==int):
             if (type(frames) == Sprite.Frame or type(frames[0])==int):
                 frames=(frames,) #single frames can be passed, nest it in an empty tuple for simple processing
             for frame in frames:
