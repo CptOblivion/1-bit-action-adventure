@@ -414,15 +414,11 @@ class Player(Character):
         self.nextState='normal'
         self.canMove=False
         self.attackString=0
-        g.GameLoop.inputEvents['moveX'].add(self.inputMoveX)
-        g.GameLoop.inputEvents['moveY'].add(self.inputMoveY)
-        g.GameLoop.inputEvents['moveUp'].add(self.inputMoveUp)
-        g.GameLoop.inputEvents['moveDown'].add(self.inputMoveDown)
-        g.GameLoop.inputEvents['moveLeft'].add(self.inputMoveLeft)
-        g.GameLoop.inputEvents['moveRight'].add(self.inputMoveRight)
-        g.GameLoop.inputEvents['dodge'].add(self.inputDodge)
-        g.GameLoop.inputEvents['attack'].add(self.inputAttack)
-        g.GameLoop.inputEvents['debugSpawn'].add(self.inputDebugSpawn)
+        g.Input.bindings['moveX'].triggerAxis.add(self.inputMoveX)
+        g.Input.bindings['moveY'].triggerAxis.add(self.inputMoveY)
+        g.Input.bindings['dodge'].triggerButton.add(self.inputDodge)
+        g.Input.bindings['attack'].triggerButton.add(self.inputAttack)
+        g.Input.bindings['debugSpawn'].triggerButton.add(self.inputDebugSpawn)
         self.setCollisionLayer('player')
         bounds=pygame.Rect(-8,-8,16,16)
         center=(-8,-8)
@@ -474,27 +470,6 @@ class Player(Character):
         self.moveInputVec.x = value
     def inputMoveY(self, value):
         self.moveInputVec.y = -value
-    def inputMoveUp(self, buttonDown):
-        #TODO: move all this inputMove stuff into a class in GameLoop, pass along a vector to each axis
-        if (buttonDown):
-            self.moveInputVec += Vector2(0,-1)
-        else:
-            self.moveInputVec -= Vector2(0,-1)
-    def inputMoveDown(self, buttonDown):
-        if (buttonDown):
-            self.moveInputVec += Vector2(0,1)
-        else:
-            self.moveInputVec -= Vector2(0,1)
-    def inputMoveLeft(self, buttonDown):
-        if (buttonDown):
-            self.moveInputVec += Vector2(-1,0)
-        else:
-            self.moveInputVec -= Vector2(-1,0)
-    def inputMoveRight(self, buttonDown):
-        if (buttonDown):
-            self.moveInputVec += Vector2(1,0)
-        else:
-            self.moveInputVec -= Vector2(1,0)
     def inputAttack(self, buttonDown):
         if (buttonDown):
             self.queueState('attack')
@@ -615,6 +590,7 @@ class Player(Character):
                 #TODO: turn 45 degrees towards moveInputVec
                 #   rather than allowing instant about-face between attacks
                 self.facing=Vector2(self.moveInputVec)
+            #TODO: quantize pos to 1 of 8 directions (to line up with facing sprites)
             pos = self.facing.normalize()*8 + Vector2(0,-8)
             if (self.attackString)==0:
                 self.attackOb.attack(pos, self.facing, attackName='A')
