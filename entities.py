@@ -201,12 +201,14 @@ class Actor(Entity):
         self.position = newPos
     def setPosition(self, pos):
         self.position=pos
-    def draw(self):
-        super().draw()
-        if (self.debugCollider):
+    def drawDebug(self):
+        if (self.debugCollider and not self.noCollide):
             tempBox = pygame.Surface((self.collisionBounds.width, self.collisionBounds.height))
             tempBox.fill(self.debugCollider)
             g.Window.current.screen.blit(tempBox, self.collisionBounds.topleft)
+    def draw(self):
+        super().draw()
+        self.drawDebug()
 
     def destroy(self):
         super().destroy()
@@ -435,7 +437,7 @@ class Player(Character):
                                                                          'Bdiag':((0,48,16,16,.03),
                                                                                   (16,48,16,16,.02),
                                                                                   (32,48,16,16), 'noLoop')}),
-                                1,.03,.02,.25,collisionLayer='playerAttack',
+                                1,.03,.1,.18,collisionLayer='playerAttack',
                               ghost=True, parent=self, origin=center)
     def draw(self):
         Character.draw(self)
@@ -659,6 +661,7 @@ class DamageBox(Actor):
         self.state='notYetActivated'
         self.surface=pygame.Surface((self.sprite.currentSprite.width,self.sprite.currentSprite.height),
                                    flags=pygame.SRCALPHA)
+        #self.debugCollider = (0,255,0)
     def attack(self, position, facingVec, attackName=''):
         self.setActive(True)
         self.position=position
@@ -701,6 +704,7 @@ class DamageBox(Actor):
         g.Window.current.screen.blit(pygame.transform.rotate(self.surface, self.rotation),
                                      self.position+self.origin)
         #g.Window.current.screen.blit(self.surface,self.position+self.origin)
+        self.drawDebug()
     def onCollide(self, collision):
         super().onCollide(collision)
         col=collision.collider

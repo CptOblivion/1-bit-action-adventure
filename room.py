@@ -221,15 +221,16 @@ class WallEntry:
         self.wall=None
         self.position=position
         self.corners=[[0,0],[0,0]]
-        self.cached=False
+        self.cached=True
         self.rect = pygame.Rect(position[0]* room.tileSize, position[1]* room.tileSize,
                                 room.tileSize, room.tileSize)
         self.singleTile=None
         self.forceSingleTile=False
     def updateWall(self):
         if (self.wall and self.wall.tileGroup):
-            doCache=True
-            cacheList=(2,3,7)
+            doCache=False
+            #doCache=True
+            #cacheList=(2,3,7)
             for x in range(-1,2,2):
                 for y in range(-1,2,2):
                     offsetIndex=0
@@ -245,9 +246,11 @@ class WallEntry:
                     #trim fallbacks
                     if (offsetIndex == 1 or offsetIndex == 3 or offsetIndex==5): offsetIndex -=1
                     self.corners[max(0,x)][max(0,y)] = offsetIndex
-                    if (not offsetIndex in cacheList): doCache = False
+                    #if (not offsetIndex in cacheList): doCache = False
             self.checkDiagonal()
-            self.cached=doCache
+            #self.cached=doCache
+            neighbor=self.room.getWall((self.position[0],self.position[1]-1), self)
+            self.cached = (neighbor.wall and (neighbor.cached or neighbor.corners==[[7,7],[7,7]]))
             #don't forget to redraw cache after updating
             #maybe can get away with just drawing this tile and every one below it in the same column
             #maybe also just mark the tile's height in an array of all the columns
