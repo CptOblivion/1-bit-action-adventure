@@ -228,9 +228,6 @@ class WallEntry:
         self.forceSingleTile=False
     def updateWall(self):
         if (self.wall and self.wall.tileGroup):
-            doCache=False
-            #doCache=True
-            #cacheList=(2,3,7)
             for x in range(-1,2,2):
                 for y in range(-1,2,2):
                     offsetIndex=0
@@ -246,9 +243,26 @@ class WallEntry:
                     #trim fallbacks
                     if (offsetIndex == 1 or offsetIndex == 3 or offsetIndex==5): offsetIndex -=1
                     self.corners[max(0,x)][max(0,y)] = offsetIndex
-                    #if (not offsetIndex in cacheList): doCache = False
             self.checkDiagonal()
-            #self.cached=doCache
+            #TODO: these caching rules need to propagate downwards,
+            #   so when changing a tile we should:
+            #       update ourself 
+            #       update neighbors (inc. check diagonals for them)
+            #       check diagonals on ourself
+            #       then, if the neighbor directly below changed its cached state,
+            #           or turned to or from fully solid, update the block below that
+            #           (and iterate until the chain breaks)
+            #TODO: add a flag when setting self, where we only update neighbors in the row above,
+            #   and the one to the left
+            #   (for when we know we're updating the whole map left to right top to bottom)
+            #TODO: if we're only drawing tiles that overlap sprites, we can probably just skip all this
+            #   selective caching nonsense
+            #   then just use a liveDraw function which is called on any tile colliding with a sprite,
+            #       (check if the extra collisions are worth the cost, or if we should just redraw
+            #           tiles which contain a sprite plus left and right neighbors)
+            #   which calls redraw on the tile below it (adding the tile to a draw queue,
+            #       and calling redraw on the one below until culling rules break the chain)
+            #   then on draw, just draw the tiles in the queue
             neighbor=self.room.getWall((self.position[0],self.position[1]-1), self)
             self.cached = (neighbor.wall and (neighbor.cached or neighbor.corners==[[7,7],[7,7]]))
             #don't forget to redraw cache after updating

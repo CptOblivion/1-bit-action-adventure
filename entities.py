@@ -10,9 +10,11 @@ from math import atan2, degrees, ceil, floor
 class Entity:
     #objects in scene
     def __init__(self, name, room, sprite, position=(100,100), origin=(0,0), parent=None):
+        self.active=True
         self.children=[]
         self.name = name
-        self._parent=None
+        self._parent=None #TODO: why is this here?
+        self.parent=None
         self.position=Vector2(position)
         if (type(sprite) == str):
             self.sprite=s.Sprite(sprite, (0,0,room.tileSize,room.tileSize))
@@ -20,29 +22,31 @@ class Entity:
             self.sprite=s.Sprite(sprite[0],sprite[1])
         else:
             self.sprite=sprite
-        self.active=True
         self.origin=Vector2(origin)
         self.room = room
         if (self.room):
             self.room.entities.append(self)
-        self.parent=None
         if (parent):
             self.setParent(parent)
         self.deathTimer=None
         self.visible=True
     @property
+    def localPosition(self):
+        return self._localPosition
+    @localPosition.setter
+    def localPosition(self, value):
+        self._localPosition=value
+        if (self.parent): self._globalPosition=value+self.parent._globalPosition
+        else: self._globalPosition=value
+        for child in self.children:
+            child.localPosition=child._localPosition
+    @property
     def position(self):
         return self._globalPosition
     @position.setter
     def position(self, value):
-        #TODO: rework so set is also globalPosition, make new localPosition variable for setting local
-        #(since += and whatnot doesn't work with parent/child this way)
-        self._localPosition=value
-        if (self._parent): self._globalPosition=value+self.parent._globalPosition
-        else: self._globalPosition=value
-        for child in self.children:
-            child.position=child._localPosition #trigger the child to update its own position
-            #child._globalPosition=self._globalPosition + child._localPosition
+        if (self.parent): self.localPosition=value-self.parent._globalPosition
+        else: self.localPosition=value
     def getCell(self, gridSize):
         #TODO: for optimization (get cell to cull collision tests, also to sort into rendering cells)
         pass
@@ -83,6 +87,7 @@ class Entity:
             self.parent.children.remove(self)
         parent.children.append(self)
         self.parent=self._parent = parent
+        self.position=self._globalPosition
         
         #self.position -= parent.position
         #print('changed ', self.name, "'s parent to ", self.parent, '. New siblings (plus self): ', self.parent.children)
@@ -145,19 +150,21 @@ class Actor(Entity):
         self._localCollisionBounds = value
         self._globalCollisionBounds=value.move(self._globalPosition)
     @property
-    def position(self):
+    def localPosition(self):
         #return super().position()
-        return self._globalPosition
-    @position.setter
-    def position(self, value):
+        return self._localPosition
+    @localPosition.setter
+    def localPosition(self, value):
         #TODO: there's probably a way to inherit the position setter/getter
         #   possibly by using property(fset=lambda self=self:self._setPosition(self)) on Entity
         #super().position(value)
         self._localPosition=value
-        if (self._parent): self._globalPosition=value+self.parent._globalPosition
+        if (self.parent):
+            self._globalPosition=value+self.parent._globalPosition
+            if (self.active): print('l: ',self._localPosition, ', g: ',self._globalPosition)
         else: self._globalPosition=value
         for child in self.children:
-            child.position=child._localPosition #trigger the child to update its own position
+            child.localPosition=child._localPosition
         self.collisionBounds=self._localCollisionBounds
     def getBoundsAfterPhysics(self):
         """
@@ -191,16 +198,7 @@ class Actor(Entity):
         room.actors.append(self)
     def afterPhysics(self):
         if (self.active):
-            self.move(self.velocity*g.deltaTime)
-    def move(self, vect):
-        #probably doesn't need to be a separate function, really
-        if (self.parent):
-            newPos=self._localPosition+vect
-        else:
-            newPos=self.position+vect
-        self.position = newPos
-    def setPosition(self, pos):
-        self.position=pos
+            self.position += self.velocity*g.deltaTime
     def drawDebug(self):
         if (self.debugCollider and not self.noCollide):
             tempBox = pygame.Surface((self.collisionBounds.width, self.collisionBounds.height))
@@ -220,9 +218,7 @@ class Actor(Entity):
             #TODO: the original declaration will probably look like:
             #self.physicsBounds = property(getter_function, setter_function)
             #then use self._physicsBounds to store the bounds in local coordinates (and the getter returns that plus position)
-            #we'll still have to do velocity in the physics checks manually but that's finb
-            #selfNewBounds=self.collisionBounds.move(self.velocity*g.deltaTime)
-            #actorNewBounds=actor.collisionBounds.move(actor.velocity*g.deltaTime)
+            #we'll still have to do velocity in the physics checks manually but that's fine
             selfNewBounds=self.getBoundsAfterPhysics()
             actorNewBounds=actor.getBoundsAfterPhysics()
             if (selfNewBounds.colliderect(actorNewBounds)):
@@ -465,8 +461,6 @@ class Player(Character):
                     self.stateTimer = max(self.stateTimer*self.rollBounceTimeScale,self.rollBounceMinTime)
                     #TODO: make 'stunned' state with 'hurt' sprites but no damage blink
                     self.sprite.setState('idle'+self.getSpriteDirection()) #placeholder sprite
-    def move(self, vect, faceMovement=True, overrideAnimation=False):
-        Character.move(self, vect)
     def inputMoveX(self, value):
         #TODO: this won't mix with button-based input movements at all
         self.moveInputVec.x = value
@@ -661,14 +655,13 @@ class DamageBox(Actor):
         self.state='notYetActivated'
         self.surface=pygame.Surface((self.sprite.currentSprite.width,self.sprite.currentSprite.height),
                                    flags=pygame.SRCALPHA)
-        #self.debugCollider = (0,255,0)
+        self.debugCollider = (0,255,0)
     def attack(self, position, facingVec, attackName=''):
         self.setActive(True)
-        self.position=position
+        self.localPosition=position
         self.rotation=degrees(atan2(facingVec[0],facingVec[1]))+180
         self.rotation=int(self.rotation/45)
         self.facingVec=facingVec
-        #self.diag=self.rotation%2
         if (self.rotation%2): self.sprite.setState(attackName+'diag', restart=True)
         else: self.sprite.setState(attackName+'ortho', restart=True)
         self.rotation=int(self.rotation/2)*90
@@ -703,14 +696,11 @@ class DamageBox(Actor):
         #TODO: build rotation library on sprite creation?
         g.Window.current.screen.blit(pygame.transform.rotate(self.surface, self.rotation),
                                      self.position+self.origin)
-        #g.Window.current.screen.blit(self.surface,self.position+self.origin)
         self.drawDebug()
     def onCollide(self, collision):
         super().onCollide(collision)
         col=collision.collider
         if hasattr(col,'takeDamage'):
-            #TODO: implement force
-            #vec = col.position - self.position
             vec=self.facingVec
             col.takeDamage(1,self,vec.normalize()*50)
 
