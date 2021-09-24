@@ -10,17 +10,32 @@ import event as ev
 #TODO: use pygame.time instead of doing our own deltatime
 deltaTime=100
 
+class ActionSet:
+    def __init__(self, name, actions:list):
+        self.name=name
+        self.active=True
+        self.actions=actions
+        self.bindMap={}
+        for action in self.bindings:
+            for binding in action.bindings:
+                self.bindMap[binding.address[0]][binding.address[1]][binding.address[2]] = binding
+    def setActive(self,state):
+        if (self.active == state): return
+        for action in self.actions:
+            for binding in action.inputs:
+                #recheck the state of the inputs when the action set is toggled on or off
+                binding.poll()
+
+
+
 #TODO: move to own file
 class Input:
     def init():
+
         actions = [
             'pause',
             'moveX',
             'moveY',
-            'moveUp',
-            'moveDown',
-            'moveLeft',
-            'moveRight',
             'dodge',
             'attack',
             'debugDisplay',
@@ -28,45 +43,73 @@ class Input:
             'debugSpawn']
         Input.bindings={}
         for key in actions:
-            Input.bindings[key] = Binding(key)
+            Input.bindings[key] = Action(key)
+        Input.actionSets={
+            'menus':ActionSet('menus',{
+                'cancel':Action('cancel',[
+                    Binding(['keyboard','key',locals.K_ESCAPE],'button')])
+                }),
+            'gameplay':ActionSet('gameplay',{
+                'pause':Action('pause',[
+                    Binding(['keyboard','key',locals.K_ESCAPE],'button')]),
+                'moveX':Action('moveX',[
+                    Binding(['keyboard','key',locals.K_d],'button'),
+                    Binding(['keyboard','key',locals.K_a],'button', invert=True),
+                    Binding(['keyboard','key',locals.K_RIGHT],'button'),
+                    Binding(['keyboard','key',locals.K_LEFT],'button', invert=True),
+                    Binding(['controller','axis',0],'analog'),
+
+                    ]),
+                'moveY':Action('moveY',[
+                    Binding(['keyboard','key',locals.K_s],'button'),
+                    Binding(['keyboard','key',locals.K_w],'button', invert=True),
+                    Binding(['keyboard','key',locals.K_DOWN],'button'),
+                    Binding(['keyboard','key',locals.K_UP],'button', invert=True),
+                    Binding(['controller','axis',1],'analog', invert=True)]),
+                'dodge':Action('dodge',[]),
+                'attack':Action('attack',[]),
+                'debugDisplay':Action('debugDisplay',[]),
+                'debugChart':Action('debugChart',[]),
+                'debugSpawn':Action('debugSpawn',[])
+                })}
         Input.inputs={
             'gameplay':{
                 'keyboard':{
                     'keys':{
-                        pygame.locals.K_ESCAPE:BindingInput('button','pause'),
-                        pygame.locals.K_w:BindingInput('button','moveY'),
-                        pygame.locals.K_s:BindingInput('button','moveY', invert=True),
-                        pygame.locals.K_d:BindingInput('button','moveX'),
-                        pygame.locals.K_a:BindingInput('button','moveX', invert=True),
-                        pygame.locals.K_UP:BindingInput('button','moveY'),
-                        pygame.locals.K_DOWN:BindingInput('button','moveY', invert=True),
-                        pygame.locals.K_RIGHT:BindingInput('button','moveX'),
-                        pygame.locals.K_LEFT:BindingInput('button','moveX', invert=True),
-                        pygame.locals.K_x:BindingInput('button','dodge'),
-                        pygame.locals.K_LSHIFT:BindingInput('button','dodge'),
-                        pygame.locals.K_z:BindingInput('button','attack'),
-                        pygame.locals.K_SPACE:BindingInput('button','attack'),
-                        pygame.locals.K_f:BindingInput('button','debugDisplay'),
-                        pygame.locals.K_c:BindingInput('button','debugChart'),
-                        pygame.locals.K_v:BindingInput('button','debugSpawn')}},
+                        pygame.locals.K_ESCAPE:Binding('button','pause'),
+                        pygame.locals.K_w:Binding('button','moveY'),
+                        pygame.locals.K_s:Binding('button','moveY', invert=True),
+                        pygame.locals.K_d:Binding('button','moveX'),
+                        pygame.locals.K_a:Binding('button','moveX', invert=True),
+                        pygame.locals.K_UP:Binding('button','moveY'),
+                        pygame.locals.K_DOWN:Binding('button','moveY', invert=True),
+                        pygame.locals.K_RIGHT:Binding('button','moveX'),
+                        pygame.locals.K_LEFT:Binding('button','moveX', invert=True),
+                        pygame.locals.K_x:Binding('button','dodge'),
+                        pygame.locals.K_LSHIFT:Binding('button','dodge'),
+                        pygame.locals.K_z:Binding('button','attack'),
+                        pygame.locals.K_SPACE:Binding('button','attack'),
+                        pygame.locals.K_f:Binding('button','debugDisplay'),
+                        pygame.locals.K_c:Binding('button','debugChart'),
+                        pygame.locals.K_v:Binding('button','debugSpawn')}},
                 'controller':{ #TODO: support multiple controllers
                     'buttons':{
-                        0:BindingInput('button','dodge'),
-                        2:BindingInput('button','attack')
+                        0:Binding('button','dodge'),
+                        2:Binding('button','attack')
                         },
                     'axes':{
-                        0:BindingInput('analog', 'moveX'),
-                        1:BindingInput('analog', 'moveY', invert=True)
+                        0:Binding('analog', 'moveX'),
+                        1:Binding('analog', 'moveY', invert=True)
                         },
                     'hats':{
-                        0:(BindingInput('analog','moveX'),
-                           BindingInput('analog','moveY'))
+                        0:(Binding('analog','moveX'),
+                           Binding('analog','moveY'))
                         }}
                 },
             'menus':{
                 'keyboard':{
                     'keys':{
-                        pygame.locals.K_ESCAPE:BindingInput('button','pause')
+                        pygame.locals.K_ESCAPE:Binding('button','pause')
                         }},
             'controller':{
                 'buttons':{
@@ -109,6 +152,9 @@ class Input:
                 if (event.button in Input.inputs[inputSet]['controller']['buttons']):
                     Input.inputs[inputSet]['controller']['buttons'][event.button].trigger(False)
             elif (event.type == locals.JOYHATMOTION):
+                #TODO: treat each hat as 2 axes (list them as such,
+                #   eg hats[0] is hat==0 input[0], hats[1] is hat==0 input[1]
+                #event.hat index is int(hatIndex/2), event.inputs index is hatIndex%2
                 if (event.hat in Input.inputs[inputSet]['controller']['hats']):
                     hat=Input.inputs[inputSet]['controller']['hats'][event.hat]
                     if (hat[0]): hat[0].trigger(event.value[0])
@@ -120,66 +166,75 @@ class Input:
                 Input.addController(event)
             elif (event.type == locals.JOYDEVICEREMOVED):
                 Input.removeController(event)
-class BindingInput:
+class Binding:
     def __init__(self,
+                 address:list[str,str,int], #device, inputType, address (list, list, int)
                  type,#'button' or 'axis'
-                 binding, #actual binding, probably int (controller button or axis, keyboard constant, etc)
                  axisThreshold=.1, #deadzone for analog->analog, trigger threshold for analog->button
                  invert=False,#invert direction of output
                  debugPrint=False
                  ):
-        
-        #TODO: should we store the address (EG keyboard.key) in the binding? any use here?
+        self.address=address
         self.type = type
         self.value = 0
-        self.binding=Input.bindings[binding]
+        self.action=None
         self.direction=1
         if (invert): self.direction=-1
         self.axisThreshold=axisThreshold
-        self.binding.inputs.append(self)
         self.debugPrint=debugPrint
     def trigger(self, newValue):
         if (self.debugPrint): print(newValue)
         newValue *= self.direction
-        self.binding.updateInput(self, newValue)
+        self.action.updateInput(self, newValue)
         self.value = newValue
-class Binding:
-    def __init__(self, name):
+    def poll(self):
+        #TODO: check the current state of the bound input,
+        #   self.trigger(value) if it's different from self.value
+        pass
+class Action:
+    def __init__(self, name, bindings):
         #TODO: some way to extract hat values as separate buttons in one pass?
         #TODO: consider Vector2 support
         self.triggerButton=ev.InputEvent()
         self.triggerAxis = ev.InputEvent()
-        self.inputs=[] #storing the inputs for later, to display in the config UI when that exists
+        self.bindings=[]
+        for binding in bindings:
+            self.addBinding(binding)
         self.boolCount = 0
         self.boolValue=False
         self.floatValue = 0
-    def updateInput(self, input, newValue):
+    def addBinding(self, binding):
+        self.bindings.append(binding)
+        binding.action=self
+    def updateInput(self, binding, newValue):
         discardBool=False #for float values that don't cross the trigger threshold
         floatVal = 0
-        if (input.type == 'button'):
+        if (binding.type == 'button'):
             if (newValue):
-                self.boolCount +=input.direction
+                self.boolCount +=binding.direction
             else:
-                self.boolCount -= input.direction
-            if (self.boolCount < 0): self.triggerAxis.invoke(-1)
-            else: self.triggerAxis.invoke(min(1,self.boolCount))
-        elif (input.type == 'analog'):
-            if (abs(newValue) > input.axisThreshold):
+                self.boolCount -= binding.direction
+                if (self.boolCount < 0): self.triggerAxis.invoke(-1)
+                else: self.triggerAxis.invoke(min(1,self.boolCount))
+        elif (binding.type == 'analog'):
+            if (abs(newValue) > binding.axisThreshold):
                 #TODO: forgot to check if axes are 0 to 1 or -1 to 1
-                floatVal = (abs(newValue) - input.axisThreshold) * (1-input.axisThreshold)
+                floatVal = (abs(newValue) - binding.axisThreshold) * (1-binding.axisThreshold)
                 if (newValue < 0):
                     floatVal *= -1
                 self.triggerAxis.invoke(floatVal)
 
-                if (abs(input.value) < input.axisThreshold):
+                if (abs(binding.value) < binding.axisThreshold):
                     self.boolCount += 1
-            elif (abs(newValue) < input.axisThreshold and abs(input.value) > input.axisThreshold):
+            elif (abs(newValue) < binding.axisThreshold and abs(binding.value) > binding.axisThreshold):
                 self.boolCount -= 1
                 self.triggerAxis.invoke(0)
             #if both the previous and new value are on the same side of the threshold:
             else: discardBool=True
         if (not discardBool):
             if (self.boolValue and not self.boolCount):
+                #TODO: for axis to button, factor in direction
+                #   (only trigger on positive input unless direction is negative)
                 self.triggerButton.invoke(False)
                 self.boolValue = False
             elif (self.boolCount and not self.boolValue):
