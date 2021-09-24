@@ -14,6 +14,7 @@ deltaTime=100
 class Input:
     def init():
         actions = [
+            'pause',
             'moveX',
             'moveY',
             'moveUp',
@@ -29,37 +30,52 @@ class Input:
         for key in actions:
             Input.bindings[key] = Binding(key)
         Input.inputs={
-            'keyboard':{
-                'keys':{
-                    pygame.locals.K_w:BindingInput('button','moveY'),
-                    pygame.locals.K_s:BindingInput('button','moveY', invert=True),
-                    pygame.locals.K_d:BindingInput('button','moveX'),
-                    pygame.locals.K_a:BindingInput('button','moveX', invert=True),
-                    pygame.locals.K_UP:BindingInput('button','moveY'),
-                    pygame.locals.K_DOWN:BindingInput('button','moveY', invert=True),
-                    pygame.locals.K_RIGHT:BindingInput('button','moveX'),
-                    pygame.locals.K_LEFT:BindingInput('button','moveX', invert=True),
-                    pygame.locals.K_x:BindingInput('button','dodge'),
-                    pygame.locals.K_LSHIFT:BindingInput('button','dodge'),
-                    pygame.locals.K_z:BindingInput('button','attack'),
-                    pygame.locals.K_SPACE:BindingInput('button','attack'),
-                    pygame.locals.K_f:BindingInput('button','debugDisplay'),
-                    pygame.locals.K_c:BindingInput('button','debugChart'),
-                    pygame.locals.K_v:BindingInput('button','debugSpawn')}},
-            'controller':{ #TODO: support multiple controllers
+            'gameplay':{
+                'keyboard':{
+                    'keys':{
+                        pygame.locals.K_ESCAPE:BindingInput('button','pause'),
+                        pygame.locals.K_w:BindingInput('button','moveY'),
+                        pygame.locals.K_s:BindingInput('button','moveY', invert=True),
+                        pygame.locals.K_d:BindingInput('button','moveX'),
+                        pygame.locals.K_a:BindingInput('button','moveX', invert=True),
+                        pygame.locals.K_UP:BindingInput('button','moveY'),
+                        pygame.locals.K_DOWN:BindingInput('button','moveY', invert=True),
+                        pygame.locals.K_RIGHT:BindingInput('button','moveX'),
+                        pygame.locals.K_LEFT:BindingInput('button','moveX', invert=True),
+                        pygame.locals.K_x:BindingInput('button','dodge'),
+                        pygame.locals.K_LSHIFT:BindingInput('button','dodge'),
+                        pygame.locals.K_z:BindingInput('button','attack'),
+                        pygame.locals.K_SPACE:BindingInput('button','attack'),
+                        pygame.locals.K_f:BindingInput('button','debugDisplay'),
+                        pygame.locals.K_c:BindingInput('button','debugChart'),
+                        pygame.locals.K_v:BindingInput('button','debugSpawn')}},
+                'controller':{ #TODO: support multiple controllers
+                    'buttons':{
+                        0:BindingInput('button','dodge'),
+                        2:BindingInput('button','attack')
+                        },
+                    'axes':{
+                        0:BindingInput('analog', 'moveX'),
+                        1:BindingInput('analog', 'moveY', invert=True)
+                        },
+                    'hats':{
+                        0:(BindingInput('analog','moveX'),
+                           BindingInput('analog','moveY'))
+                        }}
+                },
+            'menus':{
+                'keyboard':{
+                    'keys':{
+                        pygame.locals.K_ESCAPE:BindingInput('button','pause')
+                        }},
+            'controller':{
                 'buttons':{
-                    0:BindingInput('button','dodge'),
-                    2:BindingInput('button','attack')
                     },
                 'axes':{
-                    0:BindingInput('analog', 'moveX'),
-                    1:BindingInput('analog', 'moveY', invert=True)
                     },
                 'hats':{
-                    0:(BindingInput('analog','moveX'),
-                       BindingInput('analog','moveY'))
                     }}
-            }
+                }}
         pygame.joystick.init()
         Input.controllers=[]
     def addController(event):
@@ -76,34 +92,30 @@ class Input:
         print('controller ',index,' disconnected')
         Input.controllers[index].quit()
         Input.controllers[index] = None
-    def processInputEvents():
+    def processInputEvents(inputSet):
         for event in pygame.event.get():
             if (event.type == locals.QUIT):
                 game.quit()
             elif (event.type== locals.KEYDOWN):
-                if (event.key == locals.K_ESCAPE):
-                    #TODO: esc shouldn't be rebindable, but it should bring up the menu
-                    #also, in the menus arrows and enter should be locked in to what they do
-                    game.quit()
-                elif (event.key in Input.inputs['keyboard']['keys']):
-                    Input.inputs['keyboard']['keys'][event.key].trigger(True)
+                if (event.key in Input.inputs[inputSet]['keyboard']['keys']):
+                    Input.inputs[inputSet]['keyboard']['keys'][event.key].trigger(True)
             elif (event.type== locals.KEYUP):
-                if (event.key in Input.inputs['keyboard']['keys']):
-                    Input.inputs['keyboard']['keys'][event.key].trigger(False)
+                if (event.key in Input.inputs[inputSet]['keyboard']['keys']):
+                    Input.inputs[inputSet]['keyboard']['keys'][event.key].trigger(False)
             elif (event.type == locals.JOYBUTTONDOWN):
-                if (event.button in Input.inputs['controller']['buttons']):
-                    Input.inputs['controller']['buttons'][event.button].trigger(True)
+                if (event.button in Input.inputs[inputSet]['controller']['buttons']):
+                    Input.inputs[inputSet]['controller']['buttons'][event.button].trigger(True)
             elif (event.type == locals.JOYBUTTONUP):
-                if (event.button in Input.inputs['controller']['buttons']):
-                    Input.inputs['controller']['buttons'][event.button].trigger(False)
+                if (event.button in Input.inputs[inputSet]['controller']['buttons']):
+                    Input.inputs[inputSet]['controller']['buttons'][event.button].trigger(False)
             elif (event.type == locals.JOYHATMOTION):
-                if (event.hat in Input.inputs['controller']['hats']):
-                    hat=Input.inputs['controller']['hats'][event.hat]
+                if (event.hat in Input.inputs[inputSet]['controller']['hats']):
+                    hat=Input.inputs[inputSet]['controller']['hats'][event.hat]
                     if (hat[0]): hat[0].trigger(event.value[0])
                     if (hat[1]): hat[1].trigger(event.value[1])
             elif (event.type ==  locals.JOYAXISMOTION):
                 if (event.axis in Input.inputs['controller']['axes']):
-                    Input.inputs['controller']['axes'][event.axis].trigger(event.value)
+                    Input.inputs[inputSet]['controller']['axes'][event.axis].trigger(event.value)
             elif (event.type == locals.JOYDEVICEADDED):
                 Input.addController(event)
             elif (event.type == locals.JOYDEVICEREMOVED):
@@ -182,9 +194,10 @@ class GameLoop:
     def __init__(game):
         global controllers
         GameLoop.current=game
-        game.running = True
+        game.paused=True
         pygame.init()
         Input.init()
+        Input.bindings['pause'].triggerButton.add(game.inputPause)
         pygame.display.set_caption("C'est Une Sword")
         pygame.display.set_icon(pygame.image.load(os.path.join(os.getcwd(), 'Assets','Icon.png')))
         
@@ -202,7 +215,6 @@ class GameLoop:
 
     def quit(game):
         print('quitting')
-        game.running = False
     def update(game):
         for entity in rm.Room.current.entities:
             if (entity.active):
@@ -241,14 +253,20 @@ class GameLoop:
             GameLoop.inputEvents[GameLoop.mappingAnalog['controllerHatX']].invoke(event.value[0])
         if ('controllerHatY' in GameLoop.mappingAnalog):
             GameLoop.inputEvents[GameLoop.mappingAnalog['controllerHatY']].invoke(event.value[1])
+    def pause(game):
+        game.paused= not game.paused
+    def inputPause(game, value):
+        if (value): game.pause()
     def main(game):
-        while game.running:
+        while True:
             GameLoop.updateDeltaTime()
-            Input.processInputEvents()
-
-            game.update()
-            game.physics()
-            rm.Room.current.draw()
+            if (game.paused): Input.processInputEvents('menus')
+            else: Input.processInputEvents('gameplay')
+            
+            if (not game.paused):
+                game.update()
+                game.physics()
+                rm.Room.current.draw()
 
 class Window:
     current = None

@@ -655,7 +655,7 @@ class DamageBox(Actor):
         self.state='notYetActivated'
         self.surface=pygame.Surface((self.sprite.currentSprite.width,self.sprite.currentSprite.height),
                                    flags=pygame.SRCALPHA)
-        self.debugCollider = (0,255,0)
+        #self.debugCollider = (0,255,0)
     def attack(self, position, facingVec, attackName=''):
         self.setActive(True)
         self.localPosition=position
