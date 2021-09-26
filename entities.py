@@ -412,11 +412,11 @@ class Player(Character):
         self.nextState='normal'
         self.canMove=False
         self.attackString=0
-        g.Input.bindings['moveX'].triggerAxis.add(self.inputMoveX)
-        g.Input.bindings['moveY'].triggerAxis.add(self.inputMoveY)
-        g.Input.bindings['dodge'].triggerButton.add(self.inputDodge)
-        g.Input.bindings['attack'].triggerButton.add(self.inputAttack)
-        g.Input.bindings['debugSpawn'].triggerButton.add(self.inputDebugSpawn)
+        g.Input.actionSets['gameplay'].actions['moveX'].triggerAxis.add(self.inputMoveX)
+        g.Input.actionSets['gameplay'].actions['moveY'].triggerAxis.add(self.inputMoveY)
+        g.Input.actionSets['gameplay'].actions['dodge'].triggerButton.add(self.inputDodge)
+        g.Input.actionSets['gameplay'].actions['attack'].triggerButton.add(self.inputAttack)
+        g.Input.actionSets['gameplay'].actions['debugSpawn'].triggerButton.add(self.inputDebugSpawn)
         self.setCollisionLayer('player')
         bounds=pygame.Rect(-8,-8,16,16)
         center=(-8,-8)

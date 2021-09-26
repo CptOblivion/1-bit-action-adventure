@@ -15,112 +15,101 @@ class ActionSet:
         self.name=name
         self.active=True
         self.actions=actions
-        self.bindMap={}
-        for action in self.bindings:
+        self.bindMap={
+            'keyboard':{
+                'keys':{}},
+            'controllers':{
+                'buttons':{},
+                'axes':{},
+                'hats':{}}}
+        for actionName, action in actions.items():
             for binding in action.bindings:
-                self.bindMap[binding.address[0]][binding.address[1]][binding.address[2]] = binding
+                self.addToBindMap(binding)
+    def addToBindMap(self, binding):
+        self.bindMap[binding.address[0]][binding.address[1]][binding.address[2]] = binding
+
     def setActive(self,state):
+        print('setting action set',self.name,'to',state)
         if (self.active == state): return
-        for action in self.actions:
-            for binding in action.inputs:
+        pressedKeys=pygame.key.get_pressed()
+        for actionName, action in self.actions.items():
+            for binding in action.bindings:
                 #recheck the state of the inputs when the action set is toggled on or off
-                binding.poll()
+                binding.poll(pressedKeys)
+    def processInputs(self, events):
+        if (not self.active):
+            return
+        for event in events:
+            if (event.type== locals.KEYDOWN and
+                  event.key in self.bindMap['keyboard']['keys']):
+                self.bindMap['keyboard']['keys'][event.key].trigger(True)
+            elif (event.type== locals.KEYUP and
+                  event.key in self.bindMap['keyboard']['keys']):
+                self.bindMap['keyboard']['keys'][event.key].trigger(False)
+            elif (event.type == locals.JOYBUTTONDOWN and
+                  event.button in self.bindMap['controller']['buttons']):
+                self.bindMap['controller']['buttons'][event.button].trigger(True)
+            elif (event.type == locals.JOYBUTTONUP and
+                  event.button in self.bindMap['controller']['buttons']):
+                self.bindMap['controller']['buttons'][event.button].trigger(False)
+            elif (event.type == locals.JOYHATMOTION):
+                #split hats into two axes indexed sequentially, EG [hat0.x, hat0.y, hat1.x, hat1.y]
+                for hatAxis in (0,1):
+                    hatNum = event.hat+hatAxis
+                    if (hatNum in self.bindMap['controller']['hats']):
+                        self.bindMap['controller']['hats'][hatNum].trigger(event.value[hatAxis])
+            elif (event.type ==  locals.JOYAXISMOTION):
+                if (event.axis in self.bindMap['controller']['axes']):
+                    self.bindMap[inputSet]['controller']['axes'][event.axis].trigger(event.value)
 
 
 
 #TODO: move to own file
 class Input:
     def init():
-
-        actions = [
-            'pause',
-            'moveX',
-            'moveY',
-            'dodge',
-            'attack',
-            'debugDisplay',
-            'debugChart',
-            'debugSpawn']
-        Input.bindings={}
-        for key in actions:
-            Input.bindings[key] = Action(key)
+        pygame.joystick.init()
+        Input.controllers=[]
+        #TODO: put all this in an ini file (with a default one saved somewhere else)
         Input.actionSets={
             'menus':ActionSet('menus',{
                 'cancel':Action('cancel',[
-                    Binding(['keyboard','key',locals.K_ESCAPE],'button')])
+                    Binding(['keyboard','keys',locals.K_ESCAPE],'button')])
                 }),
             'gameplay':ActionSet('gameplay',{
                 'pause':Action('pause',[
-                    Binding(['keyboard','key',locals.K_ESCAPE],'button')]),
+                    Binding(['keyboard','keys',locals.K_ESCAPE],'button')]),
                 'moveX':Action('moveX',[
-                    Binding(['keyboard','key',locals.K_d],'button'),
-                    Binding(['keyboard','key',locals.K_a],'button', invert=True),
-                    Binding(['keyboard','key',locals.K_RIGHT],'button'),
-                    Binding(['keyboard','key',locals.K_LEFT],'button', invert=True),
-                    Binding(['controller','axis',0],'analog'),
-
+                    Binding(['keyboard','keys',locals.K_d],'button'),
+                    Binding(['keyboard','keys',locals.K_a],'button', invert=True),
+                    Binding(['keyboard','keys',locals.K_RIGHT],'button'),
+                    Binding(['keyboard','keys',locals.K_LEFT],'button', invert=True),
+                    Binding(['controllers','axes',0],'analog'),
+                    Binding(['controllers','hats',0],'analog')
                     ]),
                 'moveY':Action('moveY',[
-                    Binding(['keyboard','key',locals.K_s],'button'),
-                    Binding(['keyboard','key',locals.K_w],'button', invert=True),
-                    Binding(['keyboard','key',locals.K_DOWN],'button'),
-                    Binding(['keyboard','key',locals.K_UP],'button', invert=True),
-                    Binding(['controller','axis',1],'analog', invert=True)]),
-                'dodge':Action('dodge',[]),
-                'attack':Action('attack',[]),
-                'debugDisplay':Action('debugDisplay',[]),
-                'debugChart':Action('debugChart',[]),
-                'debugSpawn':Action('debugSpawn',[])
+                    Binding(['keyboard','keys',locals.K_s],'button'),
+                    Binding(['keyboard','keys',locals.K_w],'button', invert=True),
+                    Binding(['keyboard','keys',locals.K_DOWN],'button'),
+                    Binding(['keyboard','keys',locals.K_UP],'button', invert=True),
+                    Binding(['controllers','axes',1],'analog', invert=True),
+                    Binding(['controllers','hats',1],'analog')
+                    ]),
+                'dodge':Action('dodge',[
+                    Binding(['keyboard','keys',locals.K_x],'button'),
+                    Binding(['controllers','buttons',0],'button')
+                    ]),
+                'attack':Action('attack',[
+                    Binding(['keyboard','keys',locals.K_z],'button'),
+                    Binding(['controllers','buttons',1],'button')
+                    ]),
+                'debugDisplay':Action('debugDisplay',[
+                    Binding(['keyboard', 'keys', locals.K_f],'button')]),
+                'debugChart':Action('debugChart',[
+                    Binding(['keyboard', 'keys', locals.K_r],'button')]),
+                'debugSpawn':Action('debugSpawn',[
+                    Binding(['keyboard', 'keys', locals.K_v],'button')])
                 })}
-        Input.inputs={
-            'gameplay':{
-                'keyboard':{
-                    'keys':{
-                        pygame.locals.K_ESCAPE:Binding('button','pause'),
-                        pygame.locals.K_w:Binding('button','moveY'),
-                        pygame.locals.K_s:Binding('button','moveY', invert=True),
-                        pygame.locals.K_d:Binding('button','moveX'),
-                        pygame.locals.K_a:Binding('button','moveX', invert=True),
-                        pygame.locals.K_UP:Binding('button','moveY'),
-                        pygame.locals.K_DOWN:Binding('button','moveY', invert=True),
-                        pygame.locals.K_RIGHT:Binding('button','moveX'),
-                        pygame.locals.K_LEFT:Binding('button','moveX', invert=True),
-                        pygame.locals.K_x:Binding('button','dodge'),
-                        pygame.locals.K_LSHIFT:Binding('button','dodge'),
-                        pygame.locals.K_z:Binding('button','attack'),
-                        pygame.locals.K_SPACE:Binding('button','attack'),
-                        pygame.locals.K_f:Binding('button','debugDisplay'),
-                        pygame.locals.K_c:Binding('button','debugChart'),
-                        pygame.locals.K_v:Binding('button','debugSpawn')}},
-                'controller':{ #TODO: support multiple controllers
-                    'buttons':{
-                        0:Binding('button','dodge'),
-                        2:Binding('button','attack')
-                        },
-                    'axes':{
-                        0:Binding('analog', 'moveX'),
-                        1:Binding('analog', 'moveY', invert=True)
-                        },
-                    'hats':{
-                        0:(Binding('analog','moveX'),
-                           Binding('analog','moveY'))
-                        }}
-                },
-            'menus':{
-                'keyboard':{
-                    'keys':{
-                        pygame.locals.K_ESCAPE:Binding('button','pause')
-                        }},
-            'controller':{
-                'buttons':{
-                    },
-                'axes':{
-                    },
-                'hats':{
-                    }}
-                }}
-        pygame.joystick.init()
-        Input.controllers=[]
+        Input.actionSets['gameplay'].setActive(False)
     def addController(event):
         index=event.device_index
         print('controller ', index, ' connected: ')
@@ -136,40 +125,20 @@ class Input:
         Input.controllers[index].quit()
         Input.controllers[index] = None
     def processInputEvents(inputSet):
-        for event in pygame.event.get():
+        events=pygame.event.get()
+        for event in events:
             if (event.type == locals.QUIT):
                 game.quit()
-            elif (event.type== locals.KEYDOWN):
-                if (event.key in Input.inputs[inputSet]['keyboard']['keys']):
-                    Input.inputs[inputSet]['keyboard']['keys'][event.key].trigger(True)
-            elif (event.type== locals.KEYUP):
-                if (event.key in Input.inputs[inputSet]['keyboard']['keys']):
-                    Input.inputs[inputSet]['keyboard']['keys'][event.key].trigger(False)
-            elif (event.type == locals.JOYBUTTONDOWN):
-                if (event.button in Input.inputs[inputSet]['controller']['buttons']):
-                    Input.inputs[inputSet]['controller']['buttons'][event.button].trigger(True)
-            elif (event.type == locals.JOYBUTTONUP):
-                if (event.button in Input.inputs[inputSet]['controller']['buttons']):
-                    Input.inputs[inputSet]['controller']['buttons'][event.button].trigger(False)
-            elif (event.type == locals.JOYHATMOTION):
-                #TODO: treat each hat as 2 axes (list them as such,
-                #   eg hats[0] is hat==0 input[0], hats[1] is hat==0 input[1]
-                #event.hat index is int(hatIndex/2), event.inputs index is hatIndex%2
-                if (event.hat in Input.inputs[inputSet]['controller']['hats']):
-                    hat=Input.inputs[inputSet]['controller']['hats'][event.hat]
-                    if (hat[0]): hat[0].trigger(event.value[0])
-                    if (hat[1]): hat[1].trigger(event.value[1])
-            elif (event.type ==  locals.JOYAXISMOTION):
-                if (event.axis in Input.inputs['controller']['axes']):
-                    Input.inputs[inputSet]['controller']['axes'][event.axis].trigger(event.value)
             elif (event.type == locals.JOYDEVICEADDED):
                 Input.addController(event)
             elif (event.type == locals.JOYDEVICEREMOVED):
                 Input.removeController(event)
+        for actionSetName, actionSet in Input.actionSets.items():
+            actionSet.processInputs(events)
 class Binding:
     def __init__(self,
-                 address:list[str,str,int], #device, inputType, address (list, list, int)
-                 type,#'button' or 'axis'
+                 address:list, #device, inputType, address (list, list, int)
+                 type, #'button' or 'axis'
                  axisThreshold=.1, #deadzone for analog->analog, trigger threshold for analog->button
                  invert=False,#invert direction of output
                  debugPrint=False
@@ -187,10 +156,26 @@ class Binding:
         newValue *= self.direction
         self.action.updateInput(self, newValue)
         self.value = newValue
-    def poll(self):
-        #TODO: check the current state of the bound input,
-        #   self.trigger(value) if it's different from self.value
-        pass
+    def poll(self, pressedKeys):
+        if (self.address[0]=='keyboard'):
+            pollValue=pressedKeys[self.address[2]]
+        elif (self.address[0]) == 'controller':
+            if (len(Input.controllers)==0): return
+            """
+            TODO: attach bindings to controllers as they connect and disconnect, to handle multiple
+            controllers alternately, keep track of which controller is the active one (stored in Input),
+            just poll that one and if it changes, update all the bindings. A button press, or
+            a siginificant amount of axis movement can trigger an active controller change
+            """
+            if (self.address[1] == 'button'):
+                pollValue=Input.controllers[0].get_button(self.address[2])
+            elif (self.address[1] == 'axis'):
+                pollValue=Input.controllers[0].get_axis(self.address[2])
+            elif (self.address[1] == 'hat'):
+                pollValue=Input.controllers[0].get_hat(int(self.address[2]/2))[self.address[2]%2]
+            else: return #fallback, should never come up
+        else: return
+        if (pollValue != self.value): self.trigger(pollValue)
 class Action:
     def __init__(self, name, bindings):
         #TODO: some way to extract hat values as separate buttons in one pass?
@@ -218,7 +203,6 @@ class Action:
                 else: self.triggerAxis.invoke(min(1,self.boolCount))
         elif (binding.type == 'analog'):
             if (abs(newValue) > binding.axisThreshold):
-                #TODO: forgot to check if axes are 0 to 1 or -1 to 1
                 floatVal = (abs(newValue) - binding.axisThreshold) * (1-binding.axisThreshold)
                 if (newValue < 0):
                     floatVal *= -1
@@ -243,16 +227,16 @@ class Action:
 
 class GameLoop:
     lastTime=None
-    rooms={}
-    #TODO: make Level class to wrap a bunch of rooms together
-    #gameloop can store  a list of levels, move this rooms dict into Level
+    #TODO: make separate time file
+    #   (use globals in the file, so it can be accessed like deltatime.safe and deltatime.raw)
     def __init__(game):
         global controllers
         GameLoop.current=game
         game.paused=True
         pygame.init()
         Input.init()
-        Input.bindings['pause'].triggerButton.add(game.inputPause)
+        Input.actionSets['gameplay'].actions['pause'].triggerButton.add(game.inputPause)
+        Input.actionSets['menus'].actions['cancel'].triggerButton.add(game.inputUnpause)
         pygame.display.set_caption("C'est Une Sword")
         pygame.display.set_icon(pygame.image.load(os.path.join(os.getcwd(), 'Assets','Icon.png')))
         
@@ -309,9 +293,17 @@ class GameLoop:
         if ('controllerHatY' in GameLoop.mappingAnalog):
             GameLoop.inputEvents[GameLoop.mappingAnalog['controllerHatY']].invoke(event.value[1])
     def pause(game):
-        game.paused= not game.paused
+        Input.actionSets['menus'].setActive(True)
+        Input.actionSets['gameplay'].setActive(False)
+        game.paused= True
+    def unpause(game):
+        Input.actionSets['menus'].setActive(False)
+        Input.actionSets['gameplay'].setActive(True)
+        game.paused=False
     def inputPause(game, value):
         if (value): game.pause()
+    def inputUnpause(game,value):
+        if (value): game.unpause()
     def main(game):
         while True:
             GameLoop.updateDeltaTime()
@@ -338,8 +330,8 @@ class Window:
         self.frameChart = pygame.Surface((600,300), pygame.SRCALPHA, 32)
         self.drawFramerate=False
         self.drawChart = False
-        Input.bindings['debugDisplay'].triggerButton.add(self.toggleDrawFramerate)
-        Input.bindings['debugChart'].triggerButton.add(self.toggleDrawFramechart)
+        Input.actionSets['gameplay'].actions['debugDisplay'].triggerButton.add(self.toggleDrawFramerate)
+        Input.actionSets['gameplay'].actions['debugChart'].triggerButton.add(self.toggleDrawFramechart)
         Window.current=self
 
         #effects (placeholder variables, mostly)
