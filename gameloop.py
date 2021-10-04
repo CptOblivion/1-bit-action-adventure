@@ -1,20 +1,21 @@
 import os
+#import time
 from pygame import locals
 import pygame
 from pygame.math import Vector2
-import datetime
 import room as rm
 import entities as ent
 import event as ev
 
-#TODO: use pygame.time instead of doing our own deltatime
 deltaTime=100
+timeScale=1
 
 class ActionSet:
     def __init__(self, name, actions:list):
         self.name=name
         self.active=True
         self.actions=actions
+        self.toggleState=None
         self.bindMap={
             'keyboard':{
                 'keys':{}},
@@ -29,13 +30,16 @@ class ActionSet:
         self.bindMap[binding.address[0]][binding.address[1]][binding.address[2]] = binding
 
     def setActive(self,state):
+        #if (self.active == state): return
         print('setting action set',self.name,'to',state)
-        if (self.active == state): return
-        pressedKeys=pygame.key.get_pressed()
-        for actionName, action in self.actions.items():
-            for binding in action.bindings:
-                #recheck the state of the inputs when the action set is toggled on or off
-                binding.poll(pressedKeys)
+        #self.toggleState=state
+        self.active=state
+        if (state):
+            pressedKeys=pygame.key.get_pressed()
+            for actionName, action in self.actions.items():
+                for binding in action.bindings:
+                    #recheck the state of the inputs when the action set is toggled on or off
+                    binding.poll(pressedKeys)
     def processInputs(self, events):
         if (not self.active):
             return
@@ -87,10 +91,10 @@ class Input:
                     Binding(['controllers','hats',0],'analog')
                     ]),
                 'moveY':Action('moveY',[
-                    Binding(['keyboard','keys',locals.K_s],'button'),
-                    Binding(['keyboard','keys',locals.K_w],'button', invert=True),
-                    Binding(['keyboard','keys',locals.K_DOWN],'button'),
-                    Binding(['keyboard','keys',locals.K_UP],'button', invert=True),
+                    Binding(['keyboard','keys',locals.K_s],'button', invert=True),
+                    Binding(['keyboard','keys',locals.K_w],'button'),
+                    Binding(['keyboard','keys',locals.K_DOWN],'button', invert=True),
+                    Binding(['keyboard','keys',locals.K_UP],'button'),
                     Binding(['controllers','axes',1],'analog', invert=True),
                     Binding(['controllers','hats',1],'analog')
                     ]),
@@ -124,7 +128,7 @@ class Input:
         print('controller ',index,' disconnected')
         Input.controllers[index].quit()
         Input.controllers[index] = None
-    def processInputEvents(inputSet):
+    def processInputEvents():
         events=pygame.event.get()
         for event in events:
             if (event.type == locals.QUIT):
@@ -180,6 +184,7 @@ class Action:
     def __init__(self, name, bindings):
         #TODO: some way to extract hat values as separate buttons in one pass?
         #TODO: consider Vector2 support
+        self.name=name
         self.triggerButton=ev.InputEvent()
         self.triggerAxis = ev.InputEvent()
         self.bindings=[]
@@ -199,8 +204,8 @@ class Action:
                 self.boolCount +=binding.direction
             else:
                 self.boolCount -= binding.direction
-                if (self.boolCount < 0): self.triggerAxis.invoke(-1)
-                else: self.triggerAxis.invoke(min(1,self.boolCount))
+            if (self.boolCount < 0): self.triggerAxis.invoke(-1)
+            else: self.triggerAxis.invoke(min(1,self.boolCount))
         elif (binding.type == 'analog'):
             if (abs(newValue) > binding.axisThreshold):
                 floatVal = (abs(newValue) - binding.axisThreshold) * (1-binding.axisThreshold)
@@ -230,7 +235,10 @@ class GameLoop:
     #TODO: make separate time file
     #   (use globals in the file, so it can be accessed like deltatime.safe and deltatime.raw)
     def __init__(game):
+        game.frameCap=60
         global controllers
+        game.idleTime=0
+        game.togglePause=None
         GameLoop.current=game
         game.paused=True
         pygame.init()
@@ -239,18 +247,21 @@ class GameLoop:
         Input.actionSets['menus'].actions['cancel'].triggerButton.add(game.inputUnpause)
         pygame.display.set_caption("C'est Une Sword")
         pygame.display.set_icon(pygame.image.load(os.path.join(os.getcwd(), 'Assets','Icon.png')))
+        game.clock=pygame.time.Clock()
         
         game.window = Window()
         rm.Level('TestZone', 'StartRoom', 'Start')
         ent.PlayerSpawn(rm.Room.current, 'Start')
-        GameLoop.lastTime = datetime.datetime.now()
+        #TODO: make a third action set that accepts start, A, X, space, enter, esc, lots of things
+        #   then change the prompt to "press start to begin"
+        game.window.screen.blit(game.window.font16.render('Press ESC to begin', False, (255,255,255)),
+                                (30,190))
+        game.window.flip()
         
-    def updateDeltaTime():
+    def updateDeltaTime(game):
         global deltaTime
-        time=datetime.datetime.now()
-        deltaTime=(time-GameLoop.lastTime).microseconds / 1000000
-        GameLoop.lastTime=time
-
+        game.clock.tick(game.frameCap)
+        deltaTime=game.clock.get_time()/1000*timeScale
 
     def quit(game):
         print('quitting')
@@ -293,27 +304,32 @@ class GameLoop:
         if ('controllerHatY' in GameLoop.mappingAnalog):
             GameLoop.inputEvents[GameLoop.mappingAnalog['controllerHatY']].invoke(event.value[1])
     def pause(game):
+        print('pause', deltaTime)
         Input.actionSets['menus'].setActive(True)
         Input.actionSets['gameplay'].setActive(False)
         game.paused= True
     def unpause(game):
+        print('unpause', deltaTime)
         Input.actionSets['menus'].setActive(False)
         Input.actionSets['gameplay'].setActive(True)
         game.paused=False
     def inputPause(game, value):
-        if (value): game.pause()
+        if (value): game.togglePause=True #game.pause()
     def inputUnpause(game,value):
-        if (value): game.unpause()
+        if (value): game.togglePause=True #game.unpause()
     def main(game):
         while True:
-            GameLoop.updateDeltaTime()
-            if (game.paused): Input.processInputEvents('menus')
-            else: Input.processInputEvents('gameplay')
+            game.updateDeltaTime()
+            Input.processInputEvents()
             
             if (not game.paused):
                 game.update()
                 game.physics()
                 rm.Room.current.draw()
+            if (game.togglePause):
+                if game.paused: game.unpause()
+                else: game.pause()
+                game.togglePause=False
 
 class Window:
     current = None
@@ -324,7 +340,8 @@ class Window:
         self.height = 240
         self.mult=3
         self.screenSize=(self.width*self.mult, self.height*self.mult)
-        self.font=pygame.font.Font(pygame.font.match_font('arial'), 16*self.mult)
+        self.debugFont=pygame.font.Font(pygame.font.match_font('arial'), 16*self.mult)
+        self.font16=pygame.font.Font(pygame.font.match_font('arial'), 16)
         self.screen=pygame.Surface((self.width, self.height))
         self.actualScreen = pygame.display.set_mode((self.width*self.mult, self.height*self.mult))
         self.frameChart = pygame.Surface((600,300), pygame.SRCALPHA, 32)
@@ -370,10 +387,10 @@ class Window:
                 self.frameChart.fill((0,255,0,128), pygame.Rect(0,h-f, 1, f))
                 self.frameChart.fill((0,0,255,128), pygame.Rect(0,h-framerate+2, 1, 4))
                 self.actualScreen.blit(self.frameChart, (0,0))
-            self.actualScreen.blit(self.font.render(str(int(framerate)), False, (0,255,0)),
+            self.actualScreen.blit(self.debugFont.render(str(int(framerate)), False, (0,255,0)),
                                    (5*self.mult,5*self.mult))
-    def flip(self):
-        self.doEffects()
+    def flip(self, doEffects=True):
+        if (doEffects): self.doEffects()
         pygame.transform.scale(self.screen,self.screenSize,self.actualScreen)
         self.framerateCounter()
         pygame.display.flip()

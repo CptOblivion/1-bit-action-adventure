@@ -161,7 +161,7 @@ class Actor(Entity):
         self._localPosition=value
         if (self.parent):
             self._globalPosition=value+self.parent._globalPosition
-            if (self.active): print('l: ',self._localPosition, ', g: ',self._globalPosition)
+            #if (self.active): print('l: ',self._localPosition, ', g: ',self._globalPosition)
         else: self._globalPosition=value
         for child in self.children:
             child.localPosition=child._localPosition
