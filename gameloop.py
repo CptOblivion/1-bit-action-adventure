@@ -11,9 +11,9 @@ deltaTime=100
 timeScale=1
 
 class ActionSet:
-    def __init__(self, name, actions:list):
+    def __init__(self, name, actions:list, defaultState=True):
         self.name=name
-        self.active=True
+        self.active=defaultState
         self.actions=actions
         self.toggleState=None
         self.bindMap={
@@ -31,10 +31,19 @@ class ActionSet:
 
     def setActive(self,state):
         #if (self.active == state): return
-        print('setting action set',self.name,'to',state)
-        #self.toggleState=state
-        self.active=state
-        if (state):
+        #print('setting action set',self.name,'to',state)
+        self.toggleState=state
+        #self.active=state
+        #if (state):
+        #    pressedKeys=pygame.key.get_pressed()
+        #    for actionName, action in self.actions.items():
+        #        for binding in action.bindings:
+        #            #recheck the state of the inputs when the action set is toggled on or off
+        #            binding.poll(pressedKeys)
+    def updateActive(self):
+        if (self.toggleState is None or self.active == self.toggleState): return
+        self.active=self.toggleState
+        if (self.toggleState):
             pressedKeys=pygame.key.get_pressed()
             for actionName, action in self.actions.items():
                 for binding in action.bindings:
@@ -75,10 +84,6 @@ class Input:
         Input.controllers=[]
         #TODO: put all this in an ini file (with a default one saved somewhere else)
         Input.actionSets={
-            'menus':ActionSet('menus',{
-                'cancel':Action('cancel',[
-                    Binding(['keyboard','keys',locals.K_ESCAPE],'button')])
-                }),
             'gameplay':ActionSet('gameplay',{
                 'pause':Action('pause',[
                     Binding(['keyboard','keys',locals.K_ESCAPE],'button')]),
@@ -112,8 +117,22 @@ class Input:
                     Binding(['keyboard', 'keys', locals.K_r],'button')]),
                 'debugSpawn':Action('debugSpawn',[
                     Binding(['keyboard', 'keys', locals.K_v],'button')])
+                }, defaultState=False),
+            'menus':ActionSet('menus',{
+                'cancel':Action('cancel',[
+                    Binding(['keyboard','keys',locals.K_ESCAPE],'button')])
+                }, defaultState=False),
+            'title':ActionSet('title',{
+                'confirm':Action('confirm',[
+                    Binding(['keyboard','keys',locals.K_ESCAPE],'button'),
+                    Binding(['keyboard','keys',locals.K_RETURN],'button'),
+                    Binding(['keyboard','keys',locals.K_SPACE],'button'),
+                    Binding(['keyboard','keys',locals.K_x],'button'),
+                    Binding(['keyboard','keys',locals.K_z],'button'),
+                    Binding(['controllers','buttons',0],'button'),
+                    Binding(['controllers','buttons',1],'button'),
+                    Binding(['controllers','buttons',7],'button')])
                 })}
-        Input.actionSets['gameplay'].setActive(False)
     def addController(event):
         index=event.device_index
         print('controller ', index, ' connected: ')
@@ -139,6 +158,8 @@ class Input:
                 Input.removeController(event)
         for actionSetName, actionSet in Input.actionSets.items():
             actionSet.processInputs(events)
+        for actionSetName, actionSet in Input.actionSets.items():
+            actionSet.updateActive()
 class Binding:
     def __init__(self,
                  address:list, #device, inputType, address (list, list, int)
@@ -245,6 +266,7 @@ class GameLoop:
         Input.init()
         Input.actionSets['gameplay'].actions['pause'].triggerButton.add(game.inputPause)
         Input.actionSets['menus'].actions['cancel'].triggerButton.add(game.inputUnpause)
+        Input.actionSets['title'].actions['confirm'].triggerButton.add(game.inputUnpause)
         pygame.display.set_caption("C'est Une Sword")
         pygame.display.set_icon(pygame.image.load(os.path.join(os.getcwd(), 'Assets','Icon.png')))
         game.clock=pygame.time.Clock()
@@ -252,9 +274,7 @@ class GameLoop:
         game.window = Window()
         rm.Level('TestZone', 'StartRoom', 'Start')
         ent.PlayerSpawn(rm.Room.current, 'Start')
-        #TODO: make a third action set that accepts start, A, X, space, enter, esc, lots of things
-        #   then change the prompt to "press start to begin"
-        game.window.screen.blit(game.window.font16.render('Press ESC to begin', False, (255,255,255)),
+        game.window.screen.blit(game.window.font16.render('Press start to begin', False, (255,255,255)),
                                 (30,190))
         game.window.flip()
         
@@ -305,6 +325,8 @@ class GameLoop:
             GameLoop.inputEvents[GameLoop.mappingAnalog['controllerHatY']].invoke(event.value[1])
     def pause(game):
         print('pause', deltaTime)
+        #TODO: rework this so we can pause and unpause at will (rather than explicitly outside of parsing inputs)
+        #   instead, make actionSet.setActive safe to use whenever
         Input.actionSets['menus'].setActive(True)
         Input.actionSets['gameplay'].setActive(False)
         game.paused= True
@@ -314,9 +336,13 @@ class GameLoop:
         Input.actionSets['gameplay'].setActive(True)
         game.paused=False
     def inputPause(game, value):
-        if (value): game.togglePause=True #game.pause()
+        if (value): game.pause()
     def inputUnpause(game,value):
-        if (value): game.togglePause=True #game.unpause()
+        if (value): game.unpause()
+    def inputTitleScreen(game, value):
+        if (value):
+            Input.actionSets['title'].setActive(False)
+            game.unpause()
     def main(game):
         while True:
             game.updateDeltaTime()
@@ -326,10 +352,6 @@ class GameLoop:
                 game.update()
                 game.physics()
                 rm.Room.current.draw()
-            if (game.togglePause):
-                if game.paused: game.unpause()
-                else: game.pause()
-                game.togglePause=False
 
 class Window:
     current = None
